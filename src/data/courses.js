@@ -1,0 +1,122 @@
+export const courses = [
+  {
+    id: 1,
+    title: "Bachelor of Theology (B.Th)",
+    duration: "4 Years",
+    description: "Comprehensive undergraduate program in biblical studies, systematic theology, and practical ministry.",
+    subjects: ["Biblical Studies", "Systematic Theology", "Church History", "Practical Ministry"],
+    fee: "$12,000/year",
+    intake: "Fall & Spring",
+    level: "Undergraduate",
+    credits: 120,
+    color: "blue"
+  },
+  {
+    id: 3,
+    title: "Master of Theology (Th.M)",
+    duration: "2 Years",
+    description: "Advanced theological study with research focus for academic and ministry excellence.",
+    subjects: ["Research Methodology", "Advanced Dogmatics", "Biblical Languages", "Thesis Writing"],
+    fee: "$18,000/year",
+    intake: "Fall Only",
+    level: "Graduate",
+    credits: 60,
+    color: "emerald"
+  },
+  {
+    id: 4,
+    title: "Doctor of Ministry (D.Min)",
+    duration: "3-4 Years",
+    description: "Professional doctoral program for experienced ministry leaders seeking advanced expertise.",
+    subjects: ["Leadership Studies", "Contemporary Theology", "Ministry Innovation", "Doctoral Project"],
+    fee: "$20,000/year",
+    intake: "Summer Cohorts",
+    level: "Doctoral",
+    credits: 45,
+    color: "amber"
+  },
+  {
+    id: 5,
+    title: "Certificate in Biblical Studies",
+    duration: "1 Year",
+    description: "Foundation program providing essential biblical knowledge and theological understanding.",
+    subjects: ["Old Testament Survey", "New Testament Survey", "Biblical Interpretation", "Church History"],
+    fee: "$8,000/year",
+    intake: "Fall, Spring & Summer",
+    level: "Certificate",
+    credits: 30,
+    color: "indigo"
+  },
+  {
+    id: 6,
+    title: "Diploma in Christian Ministry",
+    duration: "2 Years",
+    description: "Practical ministry training program for church leaders and lay ministers.",
+    subjects: ["Pastoral Care", "Worship Leadership", "Christian Education", "Mission Studies"],
+    fee: "$10,000/year",
+    intake: "Fall & Spring",
+    level: "Diploma",
+    credits: 60,
+    color: "rose"
+  },
+  {
+    id: 7,
+    title: "Master of Arts in Christian Counseling",
+    duration: "2 Years",
+    description: "Specialized program combining theological education with counseling skills.",
+    subjects: ["Counseling Theory", "Pastoral Psychology", "Family Therapy", "Crisis Intervention"],
+    fee: "$16,000/year",
+    intake: "Fall Only",
+    level: "Graduate",
+    credits: 60,
+    color: "teal"
+  },
+  {
+    id: 8,
+    title: "Bachelor of Religious Education",
+    duration: "4 Years",
+    description: "Undergraduate program focusing on Christian education and youth ministry.",
+    subjects: ["Educational Psychology", "Curriculum Development", "Youth Ministry", "Teaching Methods"],
+    fee: "$13,000/year",
+    intake: "Fall & Spring",
+    level: "Undergraduate",
+    credits: 120,
+    color: "cyan"
+  },
+  {
+    id: 9,
+    title: "Master of Sacred Music",
+    duration: "2 Years",
+    description: "Advanced program for church musicians and worship leaders.",
+    subjects: ["Music Theory", "Church Music History", "Choral Conducting", "Organ Studies"],
+    fee: "$14,000/year",
+    intake: "Fall Only",
+    level: "Graduate",
+    credits: 60,
+    color: "violet"
+  },
+  {
+    id: 10,
+    title: "Doctor of Philosophy in Theology",
+    duration: "4-5 Years",
+    description: "Research-focused doctoral program for academic and scholarly pursuits.",
+    subjects: ["Advanced Research Methods", "Theological Methodology", "Dissertation Writing", "Academic Writing"],
+    fee: "$22,000/year",
+    intake: "Fall Only",
+    level: "Doctoral",
+    credits: 60,
+    color: "orange"
+  },
+  {
+    id: 11,
+    title: "Associate in Ministry",
+    duration: "2 Years",
+    description: "Entry-level program providing foundational ministry skills and biblical knowledge.",
+    subjects: ["Introduction to Ministry", "Basic Theology", "Church Administration", "Evangelism"],
+    fee: "$9,000/year",
+    intake: "Fall & Spring",
+    level: "Associate",
+    credits: 60,
+    color: "lime"
+  }
+];
