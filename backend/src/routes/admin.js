@@ -25,8 +25,29 @@ adminRouter.get("/applications", verifyToken, async (req, res) => {
       "SELECT * FROM temp_student ORDER BY created_at DESC"
     );
     
-    // Ensure we always return an array, even if empty
-    const applications = Array.isArray(rows) ? rows : [];
+    // Transform database snake_case to camelCase for frontend
+    const applications = (Array.isArray(rows) ? rows : []).map(app => ({
+      id: app.id?.toString() || '',
+      candidateName: app.candidate_name || '',
+      courseName: app.course_name || '',
+      courseFee: app.course_fee || '₹0',
+      email: app.email || '',
+      mobileNo: app.mobile_no || '',
+      fatherName: app.father_name || '',
+      nationality: app.nationality || '',
+      religionCaste: app.religion_caste || '',
+      dateOfBirth: app.date_of_birth ? new Date(app.date_of_birth).toISOString().split('T')[0] : '',
+      educationalQualification: app.educational_qualification || '',
+      fullAddress: app.full_address || '',
+      superintendentOfServer: app.superintendent_of_server || '',
+      status: app.status || 'pending',
+      paymentStatus: app.payment_status || 'unpaid',
+      submittedAt: app.submitted_at || app.created_at || null,
+      approvedAt: app.approved_at || null,
+      rejectedAt: app.rejected_at || null,
+      paidAt: app.paid_at || null,
+      photoPath: app.photo_path || null
+    }));
     
     res.json({ 
       success: true, 
@@ -78,10 +99,10 @@ adminRouter.get("/stats", verifyToken, async (req, res) => {
         SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending,
         SUM(CASE WHEN status = 'approved' THEN 1 ELSE 0 END) as approved,
         SUM(CASE WHEN status = 'rejected' THEN 1 ELSE 0 END) as rejected,
-        SUM(CASE WHEN payment_status = 'pending' THEN 1 ELSE 0 END) as awaitingPayment,
-        SUM(CASE WHEN status = 'enrolled' THEN 1 ELSE 0 END) as fullyEnrolled,
+        SUM(CASE WHEN status = 'approved' AND payment_status = 'unpaid' THEN 1 ELSE 0 END) as awaitingPayment,
+        SUM(CASE WHEN status = 'approved' AND payment_status = 'paid' THEN 1 ELSE 0 END) as fullyEnrolled,
         SUM(CASE WHEN payment_status = 'paid' THEN 1 ELSE 0 END) as paidCount,
-        COALESCE(SUM(CASE WHEN payment_status = 'paid' THEN amount ELSE 0 END), 0) as totalRevenue
+        0 as totalRevenue
       FROM temp_student`
     );
     
