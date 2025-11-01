@@ -23,12 +23,13 @@ router.post('/login', async (req, res) => {
     // The project's SQL uses a `users` table (id, username, password, role_id)
     // and a `roles` table (role_id, role). Use those instead of a non-existent
     // `login` table.
+    // Allow login by either username OR user id (students/admins may use either)
     const [rows] = await pool.execute(
       `SELECT u.id, u.username, u.password, u.role_id, r.role 
        FROM users u 
        JOIN roles r ON u.role_id = r.role_id 
-       WHERE u.username = ?`,
-      [username]
+       WHERE u.username = ? OR u.id = ?`,
+      [username, username]
     );
 
     const user = rows?.[0];

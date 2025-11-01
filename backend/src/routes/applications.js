@@ -48,6 +48,13 @@ const upload = multer({
 router.post('/', async (req, res) => {
   const a = req.body || {};
   try {
+    console.log('POST /applications called');
+    console.log('Request body snippet:', {
+      candidateName: a.candidateName,
+      email: a.email,
+      mobileNo: a.mobileNo,
+      courseName: a.courseName
+    });
     const pool = getDbPool();
     
     // First, try to add the photo_path column if it doesn't exist
@@ -96,6 +103,7 @@ router.post('/', async (req, res) => {
       ]
     );
     const id = result.insertId;
+  console.log('New application inserted with id:', id);
     const [rows] = await pool.execute('SELECT * FROM temp_student WHERE id = ?', [id]);
     return res.status(201).json({ success: true, application: { ...rows[0], id: String(id) } });
   } catch (err) {

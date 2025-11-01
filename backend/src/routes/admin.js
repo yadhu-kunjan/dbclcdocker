@@ -73,6 +73,8 @@ router.get('/stats', verifyToken, async (req, res) => {
 // Get all applications with filtering and pagination
 router.get('/applications', verifyToken, async (req, res) => {
   try {
+    console.log('GET /admin/applications called by user:', req.user?.username || req.user?.id || 'unknown');
+    console.log('Query params:', req.query);
     const pool = getDbPool();
     const { 
       page = 1, 
@@ -148,6 +150,8 @@ router.get('/applications', verifyToken, async (req, res) => {
       ORDER BY submitted_at DESC
       LIMIT ? OFFSET ?
     `, [...queryParams, parseInt(limit), offset]);
+
+  console.log(`Fetched applications count: ${applications.length}`);
     
     // Transform data to match frontend expectations
     const transformedApplications = applications.map(app => ({
