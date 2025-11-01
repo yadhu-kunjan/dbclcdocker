@@ -1,0 +1,699 @@
+import { Router } from 'express';
+import { getDbPool } from '../config/db.js';
+import { verifyToken } from './auth.js';
+import multer from 'multer';
+import path from 'path';
+import fs from 'fs';
+
+const router = Router();
+
+// Configure multer for assignment file uploads
+const assignmentStorage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    const uploadDir = path.join(process.cwd(), 'uploads', 'assignments');
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+    cb(null, uploadDir);
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    const filename = 'assignment-' + uniqueSuffix + path.extname(file.originalname);
+    cb(null, filename);
+  }
+});
+
+const assignmentUpload = multer({ 
+  storage: assignmentStorage,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
+  fileFilter: function (req, file, cb) {
+    const allowedTypes = [
+      'application/pdf',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'text/plain',
+      'image/jpeg',
+      'image/png'
+    ];
+    if (allowedTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Invalid file type. Only PDF, DOC, DOCX, TXT, JPG, PNG files are allowed.'), false);
+    }
+  }
+});
+
+// ==================== DASHBOARD STATS ====================
+
+router.get('/dashboard/stats', verifyToken, async (req, res) => {
+  try {
+    const dbConnection = getDbPool();
+    const defaultStats = {
+      assignments: {
+        total_assignments: 0,
+        graded_assignments: 0,
+        pending_assignments: 0
+      },
+      attendance: {
+        total_records: 0,
+        present_count: 0,
+        absent_count: 0
+      },
+      students: {
+        total_students: 0,
+        active_students: 0
+      }
+    };
+
+    // Check if tables exist
+    const [tables] = await dbConnection.execute(
+      "SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME IN ('assignments', 'attendance', 'temp_student')"
+    );
+
+    const tableExists = (name) => tables.some(t => t.TABLE_NAME === name);
+
+    // Get assignment stats if table exists
+    console.log('Checking assignments table...');
+    let assignmentStats = { total_assignments: 0, graded_assignments: 0, pending_assignments: 0 };
+    if (tableExists('assignments')) {
+      console.log('Assignments table exists, fetching stats...');
+      const [rows] = await dbConnection.execute(`
+        SELECT 
+          COUNT(*) as total_assignments,
+          SUM(CASE WHEN status = 'graded' THEN 1 ELSE 0 END) as graded_assignments,
+          SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending_assignments
+        FROM assignments
+      `);
+      assignmentStats = rows[0];
+    }
+
+    // Get attendance stats if table exists
+    let attendanceStats = { total_records: 0, present_count: 0, absent_count: 0 };
+    if (tableExists('attendance')) {
+      const [rows] = await dbConnection.execute(`
+        SELECT 
+          COUNT(*) as total_records,
+          SUM(CASE WHEN status = 'present' THEN 1 ELSE 0 END) as present_count,
+          SUM(CASE WHEN status = 'absent' THEN 1 ELSE 0 END) as absent_count
+        FROM attendance
+      `);
+      attendanceStats = rows[0];
+    }
+
+    // Get student stats if table exists
+    let studentStats = { total_students: 0, active_students: 0 };
+    if (tableExists('temp_student')) {
+      const [rows] = await dbConnection.execute(`
+        SELECT 
+          COUNT(*) as total_students,
+          SUM(CASE WHEN status = 'enrolled' THEN 1 ELSE 0 END) as active_students
+        FROM temp_student
+      `);
+      studentStats = rows[0];
+    }
+
+    const stats = {
+      assignments: {
+        total_assignments: parseInt(assignmentStats.total_assignments || 0),
+        graded_assignments: parseInt(assignmentStats.graded_assignments || 0),
+        pending_assignments: parseInt(assignmentStats.pending_assignments || 0)
+      },
+      attendance: {
+        total_records: parseInt(attendanceStats.total_records || 0),
+        present_count: parseInt(attendanceStats.present_count || 0),
+        absent_count: parseInt(attendanceStats.absent_count || 0)
+      },
+      students: {
+        total_students: parseInt(studentStats.total_students || 0),
+        active_students: parseInt(studentStats.active_students || 0)
+      }
+    };
+
+    res.json({ 
+      success: true, 
+      stats,
+      debug: { tables: tables.map(t => t.TABLE_NAME) } // Include table info for debugging
+    });
+
+  } catch (error) {
+    console.error('Error fetching academic dashboard stats:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Failed to fetch academic statistics',
+      details: error.message,
+      stats: defaultStats // Return default stats on error
+    });
+  }
+});
+
+// ==================== DASHBOARD STATS ====================
+
+router.get('/dashboard/stats', verifyToken, async (req, res) => {
+  console.log('Fetching academic dashboard stats...');
+  try {
+    const dbConnection = getDbPool();
+    const defaultStats = {
+      assignments: { total_assignments: 0, graded_assignments: 0, pending_assignments: 0 },
+      attendance: { total_records: 0, present_count: 0, absent_count: 0 },
+      students: { total_students: 0, active_students: 0 }
+    };
+    
+    // Return default stats for now while debugging
+    console.log('Returning default stats for testing');
+    res.json({ 
+      success: true, 
+      stats: defaultStats,
+      debug: { message: 'Using default stats for testing' }
+    });
+  } catch (error) {
+    console.error('Error in /dashboard/stats:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch academic statistics',
+      details: error.message,
+      stats: defaultStats
+    });
+  }
+});
+
+// ==================== ASSIGNMENTS MANAGEMENT ====================
+
+// Get all assignments
+router.get('/assignments', verifyToken, async (req, res) => {
+  try {
+    const pool = getDbPool();
+    const [assignments] = await pool.execute(`
+      SELECT a.*, 
+             ts.candidate_name as student_name,
+             ts.course_name
+      FROM assignment a
+      LEFT JOIN temp_student ts ON a.student_id = ts.id
+      ORDER BY a.created_at DESC
+    `);
+    
+    res.json({ success: true, assignments });
+  } catch (error) {
+    console.error('Error fetching assignments:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch assignments', error: error.message });
+  }
+});
+
+// Create new assignment
+router.post('/assignments', assignmentUpload.single('file'), verifyToken, async (req, res) => {
+  try {
+    const { title, description, student_id, due_date, max_marks, assignment_type, instructions } = req.body;
+    const file = req.file;
+    
+    if (!title || !student_id || !due_date) {
+      return res.status(400).json({ success: false, message: 'Title, student, and due date are required' });
+    }
+    
+    const pool = getDbPool();
+    const filePath = file ? file.filename : null;
+    
+    const [result] = await pool.execute(`
+      INSERT INTO assignment (title, description, student_id, due_date, max_marks, assignment_type, instructions, file_path, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())
+    `, [title, description, student_id, due_date, max_marks || 100, assignment_type || 'homework', instructions, filePath]);
+    
+    const [newAssignment] = await pool.execute(`
+      SELECT a.*, ts.candidate_name as student_name, ts.course_name
+      FROM assignment a
+      LEFT JOIN temp_student ts ON a.student_id = ts.id
+      WHERE a.id = ?
+    `, [result.insertId]);
+    
+    res.status(201).json({ success: true, assignment: newAssignment[0] });
+  } catch (error) {
+    console.error('Error creating assignment:', error);
+    res.status(500).json({ success: false, message: 'Failed to create assignment', error: error.message });
+  }
+});
+
+// Update assignment
+router.put('/assignments/:id', assignmentUpload.single('file'), verifyToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { title, description, student_id, due_date, max_marks, assignment_type, instructions, marks_obtained, feedback } = req.body;
+    const file = req.file;
+    
+    const pool = getDbPool();
+    
+    // Get existing assignment to check for file
+    const [existingAssignment] = await pool.execute('SELECT file_path FROM assignment WHERE id = ?', [id]);
+    
+    let filePath = existingAssignment[0]?.file_path;
+    if (file) {
+      // Delete old file if exists
+      if (filePath) {
+        const oldFilePath = path.join(process.cwd(), 'uploads', 'assignments', filePath);
+        if (fs.existsSync(oldFilePath)) {
+          fs.unlinkSync(oldFilePath);
+        }
+      }
+      filePath = file.filename;
+    }
+    
+    await pool.execute(`
+      UPDATE assignment 
+      SET title = ?, description = ?, student_id = ?, due_date = ?, max_marks = ?, 
+          assignment_type = ?, instructions = ?, file_path = ?, marks_obtained = ?, feedback = ?, updated_at = NOW()
+      WHERE id = ?
+    `, [title, description, student_id, due_date, max_marks, assignment_type, instructions, filePath, marks_obtained, feedback, id]);
+    
+    const [updatedAssignment] = await pool.execute(`
+      SELECT a.*, ts.candidate_name as student_name, ts.course_name
+      FROM assignment a
+      LEFT JOIN temp_student ts ON a.student_id = ts.id
+      WHERE a.id = ?
+    `, [id]);
+    
+    res.json({ success: true, assignment: updatedAssignment[0] });
+  } catch (error) {
+    console.error('Error updating assignment:', error);
+    res.status(500).json({ success: false, message: 'Failed to update assignment', error: error.message });
+  }
+});
+
+// Delete assignment
+router.delete('/assignments/:id', verifyToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const pool = getDbPool();
+    
+    // Get assignment file path before deletion
+    const [assignment] = await pool.execute('SELECT file_path FROM assignment WHERE id = ?', [id]);
+    
+    await pool.execute('DELETE FROM assignment WHERE id = ?', [id]);
+    
+    // Delete associated file
+    if (assignment[0]?.file_path) {
+      const filePath = path.join(process.cwd(), 'uploads', 'assignments', assignment[0].file_path);
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+      }
+    }
+    
+    res.json({ success: true, message: 'Assignment deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting assignment:', error);
+    res.status(500).json({ success: false, message: 'Failed to delete assignment', error: error.message });
+  }
+});
+
+// ==================== ATTENDANCE MANAGEMENT ====================
+
+// Get attendance records
+router.get('/attendance', verifyToken, async (req, res) => {
+  try {
+    const { student_id, date, status } = req.query;
+    const pool = getDbPool();
+    
+    let query = `
+      SELECT a.*, ts.candidate_name as student_name, ts.course_name
+      FROM attendance a
+      LEFT JOIN temp_student ts ON a.student_id = ts.id
+    `;
+    
+    const conditions = [];
+    const params = [];
+    
+    if (student_id) {
+      conditions.push('a.student_id = ?');
+      params.push(student_id);
+    }
+    if (date) {
+      conditions.push('a.attendance_date = ?');
+      params.push(date);
+    }
+    if (status) {
+      conditions.push('a.status = ?');
+      params.push(status);
+    }
+    
+    if (conditions.length > 0) {
+      query += ' WHERE ' + conditions.join(' AND ');
+    }
+    
+    query += ' ORDER BY a.attendance_date DESC, ts.candidate_name';
+    
+    const [attendance] = await pool.execute(query, params);
+    
+    res.json({ success: true, attendance });
+  } catch (error) {
+    console.error('Error fetching attendance:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch attendance', error: error.message });
+  }
+});
+
+// Mark attendance
+router.post('/attendance', verifyToken, async (req, res) => {
+  try {
+    const { student_id, attendance_date, status, remarks } = req.body;
+    
+    if (!student_id || !attendance_date || !status) {
+      return res.status(400).json({ success: false, message: 'Student, date, and status are required' });
+    }
+    
+    const pool = getDbPool();
+    
+    // Check if attendance already exists for this date
+    const [existing] = await pool.execute(
+      'SELECT id FROM attendance WHERE student_id = ? AND attendance_date = ?',
+      [student_id, attendance_date]
+    );
+    
+    if (existing.length > 0) {
+      // Update existing attendance
+      await pool.execute(`
+        UPDATE attendance 
+        SET status = ?, remarks = ?, updated_at = NOW()
+        WHERE id = ?
+      `, [status, remarks, existing[0].id]);
+    } else {
+      // Create new attendance record
+      await pool.execute(`
+        INSERT INTO attendance (student_id, attendance_date, status, remarks, created_at, updated_at)
+        VALUES (?, ?, ?, ?, NOW(), NOW())
+      `, [student_id, attendance_date, status, remarks]);
+    }
+    
+    res.json({ success: true, message: 'Attendance marked successfully' });
+  } catch (error) {
+    console.error('Error marking attendance:', error);
+    res.status(500).json({ success: false, message: 'Failed to mark attendance', error: error.message });
+  }
+});
+
+// Bulk mark attendance for multiple students
+router.post('/attendance/bulk', verifyToken, async (req, res) => {
+  try {
+    const { attendance_date, attendance_records } = req.body;
+    
+    if (!attendance_date || !attendance_records || !Array.isArray(attendance_records)) {
+      return res.status(400).json({ success: false, message: 'Date and attendance records are required' });
+    }
+    
+    const pool = getDbPool();
+    
+    for (const record of attendance_records) {
+      const { student_id, status, remarks } = record;
+      
+      if (student_id && status) {
+        // Check if attendance already exists
+        const [existing] = await pool.execute(
+          'SELECT id FROM attendance WHERE student_id = ? AND attendance_date = ?',
+          [student_id, attendance_date]
+        );
+        
+        if (existing.length > 0) {
+          // Update existing
+          await pool.execute(`
+            UPDATE attendance 
+            SET status = ?, remarks = ?, updated_at = NOW()
+            WHERE id = ?
+          `, [status, remarks, existing[0].id]);
+        } else {
+          // Create new
+          await pool.execute(`
+            INSERT INTO attendance (student_id, attendance_date, status, remarks, created_at, updated_at)
+            VALUES (?, ?, ?, ?, NOW(), NOW())
+          `, [student_id, attendance_date, status, remarks]);
+        }
+      }
+    }
+    
+    res.json({ success: true, message: 'Bulk attendance marked successfully' });
+  } catch (error) {
+    console.error('Error marking bulk attendance:', error);
+    res.status(500).json({ success: false, message: 'Failed to mark bulk attendance', error: error.message });
+  }
+});
+
+// Update attendance
+router.put('/attendance/:id', verifyToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status, remarks } = req.body;
+    
+    const pool = getDbPool();
+    await pool.execute(`
+      UPDATE attendance 
+      SET status = ?, remarks = ?, updated_at = NOW()
+      WHERE id = ?
+    `, [status, remarks, id]);
+    
+    const [updatedAttendance] = await pool.execute(`
+      SELECT a.*, ts.candidate_name as student_name, ts.course_name
+      FROM attendance a
+      LEFT JOIN temp_student ts ON a.student_id = ts.id
+      WHERE a.id = ?
+    `, [id]);
+    
+    res.json({ success: true, attendance: updatedAttendance[0] });
+  } catch (error) {
+    console.error('Error updating attendance:', error);
+    res.status(500).json({ success: false, message: 'Failed to update attendance', error: error.message });
+  }
+});
+
+// Delete attendance
+router.delete('/attendance/:id', verifyToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const pool = getDbPool();
+    
+    await pool.execute('DELETE FROM attendance WHERE id = ?', [id]);
+    
+    res.json({ success: true, message: 'Attendance record deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting attendance:', error);
+    res.status(500).json({ success: false, message: 'Failed to delete attendance', error: error.message });
+  }
+});
+
+// ==================== STUDENT ACADEMIC DATA ====================
+
+// Get student academic summary
+router.get('/students/:id/academic', verifyToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const pool = getDbPool();
+    
+    // Get student info
+    const [student] = await pool.execute('SELECT * FROM temp_student WHERE id = ?', [id]);
+    
+    if (student.length === 0) {
+      return res.status(404).json({ success: false, message: 'Student not found' });
+    }
+    
+    // Get assignments
+    const [assignments] = await pool.execute(`
+      SELECT * FROM assignment 
+      WHERE student_id = ? 
+      ORDER BY created_at DESC
+    `, [id]);
+    
+    // Get attendance records
+    const [attendance] = await pool.execute(`
+      SELECT * FROM attendance 
+      WHERE student_id = ? 
+      ORDER BY attendance_date DESC
+    `, [id]);
+    
+    // Calculate attendance percentage
+    const totalDays = attendance.length;
+    const presentDays = attendance.filter(a => a.status === 'present').length;
+    const attendancePercentage = totalDays > 0 ? (presentDays / totalDays) * 100 : 0;
+    
+    // Calculate average marks
+    const gradedAssignments = assignments.filter(a => a.marks_obtained !== null);
+    const averageMarks = gradedAssignments.length > 0 
+      ? gradedAssignments.reduce((sum, a) => sum + a.marks_obtained, 0) / gradedAssignments.length 
+      : 0;
+    
+    res.json({
+      success: true,
+      academic: {
+        student: student[0],
+        assignments: assignments,
+        attendance: attendance,
+        attendancePercentage: Math.round(attendancePercentage),
+        averageMarks: Math.round(averageMarks),
+        totalAssignments: assignments.length,
+        gradedAssignments: gradedAssignments.length
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching student academic data:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch student academic data', error: error.message });
+  }
+});
+
+// ==================== FACULTY ASSIGNMENT MANAGEMENT ====================
+
+// Get assignments for faculty to grade
+router.get('/faculty/assignments', verifyToken, async (req, res) => {
+  try {
+    const pool = getDbPool();
+    const [assignments] = await pool.execute(`
+      SELECT a.*, ts.candidate_name as student_name, ts.course_name, ts.email
+      FROM assignment a
+      LEFT JOIN temp_student ts ON a.student_id = ts.id
+      WHERE a.marks_obtained IS NULL OR a.marks_obtained = ''
+      ORDER BY a.due_date ASC
+    `);
+    
+    res.json({ success: true, assignments });
+  } catch (error) {
+    console.error('Error fetching faculty assignments:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch assignments', error: error.message });
+  }
+});
+
+// Grade assignment
+router.post('/assignments/:id/grade', verifyToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { marks_obtained, feedback } = req.body;
+    
+    if (!marks_obtained) {
+      return res.status(400).json({ success: false, message: 'Marks are required' });
+    }
+    
+    const pool = getDbPool();
+    await pool.execute(`
+      UPDATE assignment 
+      SET marks_obtained = ?, feedback = ?, updated_at = NOW()
+      WHERE id = ?
+    `, [marks_obtained, feedback, id]);
+    
+    const [gradedAssignment] = await pool.execute(`
+      SELECT a.*, ts.candidate_name as student_name, ts.course_name
+      FROM assignment a
+      LEFT JOIN temp_student ts ON a.student_id = ts.id
+      WHERE a.id = ?
+    `, [id]);
+    
+    res.json({ success: true, assignment: gradedAssignment[0] });
+  } catch (error) {
+    console.error('Error grading assignment:', error);
+    res.status(500).json({ success: false, message: 'Failed to grade assignment', error: error.message });
+  }
+});
+
+// Serve assignment files
+router.get('/assignments/file/:filename', (req, res) => {
+  const { filename } = req.params;
+  const filePath = path.join(process.cwd(), 'uploads', 'assignments', filename);
+  
+  if (fs.existsSync(filePath)) {
+    res.sendFile(filePath);
+  } else {
+    res.status(404).json({ success: false, message: 'File not found' });
+  }
+});
+
+// End of routes
+export default router;
+    
+    // Get assignment statistics
+    const [assignmentStats] = await pool.execute(`
+      SELECT 
+        COUNT(*) as total_assignments,
+        COUNT(CASE WHEN marks_obtained IS NOT NULL THEN 1 END) as graded_assignments,
+        COUNT(CASE WHEN marks_obtained IS NULL THEN 1 END) as pending_assignments,
+        AVG(CASE WHEN marks_obtained IS NOT NULL THEN marks_obtained END) as average_marks
+      FROM assignment
+    `);
+    
+    // Get attendance statistics
+    const [attendanceStats] = await pool.execute(`
+      SELECT 
+        COUNT(*) as total_records,
+        COUNT(CASE WHEN status = 'present' THEN 1 END) as present_count,
+        COUNT(CASE WHEN status = 'absent' THEN 1 END) as absent_count,
+        COUNT(CASE WHEN status = 'late' THEN 1 END) as late_count
+      FROM attendance
+    `);
+    
+    // Get student statistics
+    const [studentStats] = await pool.execute(`
+      SELECT 
+        COUNT(*) as total_students,
+        COUNT(CASE WHEN status = 'approved' THEN 1 END) as active_students,
+        COUNT(CASE WHEN status = 'pending' THEN 1 END) as pending_students
+      FROM temp_student
+    `);
+    
+    res.json({
+      success: true,
+      stats: {
+        assignments: assignmentStats[0],
+        attendance: attendanceStats[0],
+        students: studentStats[0]
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching dashboard stats:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch dashboard statistics', error: error.message });
+  }
+});
+
+// Get dashboard statistics
+router.get('/dashboard/stats', verifyToken, async (req, res) => {
+  try {
+    const dbConnection = getDbPool();
+
+    // Get assignment stats
+    const [assignmentStats] = await dbConnection.execute(`
+      SELECT 
+        COUNT(*) as total_assignments,
+        SUM(CASE WHEN graded = true THEN 1 ELSE 0 END) as graded_assignments,
+        SUM(CASE WHEN graded = false THEN 1 ELSE 0 END) as pending_assignments
+      FROM assignments
+    `);
+
+    // Get attendance stats
+    const [attendanceStats] = await dbConnection.execute(`
+      SELECT 
+        COUNT(*) as total_records,
+        SUM(CASE WHEN status = 'present' THEN 1 ELSE 0 END) as present_count,
+        SUM(CASE WHEN status = 'absent' THEN 1 ELSE 0 END) as absent_count
+      FROM attendance
+    `);
+
+    // Get student stats
+    const [studentStats] = await dbConnection.execute(`
+      SELECT 
+        COUNT(*) as total_students,
+        SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) as active_students
+      FROM temp_student
+    `);
+
+    // If tables don't exist yet, provide default stats
+    const stats = {
+      assignments: { 
+        total_assignments: assignmentStats[0]?.total_assignments || 0, 
+        graded_assignments: assignmentStats[0]?.graded_assignments || 0, 
+        pending_assignments: assignmentStats[0]?.pending_assignments || 0 
+      },
+      attendance: { 
+        total_records: attendanceStats[0]?.total_records || 0, 
+        present_count: attendanceStats[0]?.present_count || 0, 
+        absent_count: attendanceStats[0]?.absent_count || 0 
+      },
+      students: { 
+        total_students: studentStats[0]?.total_students || 0, 
+        active_students: studentStats[0]?.active_students || 0 
+      }
+    };
+    
+    res.json({ success: true, stats });
+  } catch (error) {
+    console.error('Error fetching academic stats:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+export default router;

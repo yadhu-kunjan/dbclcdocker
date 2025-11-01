@@ -19,8 +19,18 @@ dotenv.config({ path: './authconfig.env' });
 const app = express();
 const port = 3001; // A port for your backend server
 
+// Async error handler wrapper
+const asyncHandler = (fn) => (req, res, next) => {
+  Promise.resolve(fn(req, res, next)).catch(next);
+};
+
 // Middleware
-app.use(cors());
+app.use(cors({
+  origin: ['http://localhost:8080', 'http://localhost:80', 'http://localhost:5173', 'http://127.0.0.1:5173'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true
+}));
 app.use(express.json()); // Parse JSON bodies
 app.use(express.urlencoded({ extended: true })); // Parse URL-encoded bodies
 
@@ -46,8 +56,34 @@ app.use('/api/faculty', facultyRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/academic', academicRoutes);
 
-// Create a simple API endpoint
-// This endpoint will fetch all users from a 'users' table
+// Error handling middleware
+app.use((err, req, res, next) => {
+  console.error('Error:', err.stack);
+  res.status(500).json({
+    success: false,
+    error: 'Internal Server Error',
+    message: err.message,
+    stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
+  });
+});
+
+// 404 handler
+app.use((req, res) => {
+  console.log(`404 - Not Found: ${req.method} ${req.originalUrl}`);
+  res.status(404).json({
+    success: false,
+    error: 'Not Found',
+    message: `Cannot ${req.method} ${req.originalUrl}`
+  });
+});
+
+// Request logging middleware
+app.use((req, res, next) => {
+  console.log(`${req.method} ${req.originalUrl}`);
+  next();
+});
+
+// Simple test endpoint
 app.get('/api/users', async (req, res) => {
   try {
     const { getDbPool } = await import('./config/db.js');

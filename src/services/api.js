@@ -183,14 +183,48 @@ export const facultyAPI = {
 export const adminAPI = {
   // Get dashboard statistics
   getStats: async () => {
-    const response = await api.get('/admin/stats');
-    return response.data;
+    try {
+      console.log('Fetching admin stats...');
+      const response = await api.get('/admin/stats');
+      console.log('Stats response:', response.data);
+      return response.data;
+    } catch (err) {
+      console.error('Failed to fetch stats:', err);
+      throw err;
+    }
   },
   
   // Get applications with filtering and pagination
   getApplications: async (params = {}) => {
-    const response = await api.get('/admin/applications', { params });
-    return response.data;
+    try {
+      console.log('\n=== FETCHING APPLICATIONS ===');
+      console.log('Request params:', params);
+      console.log('Auth token present:', !!localStorage.getItem('authToken'));
+      
+      const response = await api.get('/admin/applications', { 
+        params,
+        timeout: 10000 // 10 second timeout
+      });
+      
+      console.log('Applications response status:', response.status);
+      console.log('Applications data:', response.data);
+      
+      return response.data;
+    } catch (err) {
+      console.error('\n=== API ERROR ===');
+      console.error('Error fetching applications:', {
+        message: err.message,
+        status: err.response?.status,
+        data: err.response?.data,
+        config: {
+          url: err.config?.url,
+          method: err.config?.method,
+          headers: err.config?.headers,
+          params: err.config?.params
+        }
+      });
+      throw err;
+    }
   },
   
   // Update application status

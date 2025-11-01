@@ -22,6 +22,11 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
+  // Initialize dashboard data on mount
+  useEffect(() => {
+    loadDashboardData();
+  }, []);
+
   // Application management state
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
@@ -61,26 +66,66 @@ export default function AdminDashboard() {
 
   const loadDashboardData = async () => {
     try {
+      console.log('Starting to load dashboard data...');
       setLoading(true);
       setError(null);
       
-      // Load stats, settings, and academic data in parallel
-      const [statsResponse, settingsResponse, academicStatsResponse] = await Promise.all([
-        adminAPI.getStats(),
-        adminAPI.getSettings(),
-        academicAPI.getAcademicStats()
+      // Check for auth token before making requests
+      const token = localStorage.getItem('authToken');
+      console.log('Auth token:', token ? 'Present' : 'Missing');
+      
+      if (!token) {
+        console.error('No auth token found');
+        setError('Authentication required');
+        setLoading(false);
+        return;
+      }
+
+      console.log('Proceeding to load dashboard data...');
+      
+      // Add debug logging for API calls
+      const handleApiCall = async (name, promise) => {
+        try {
+          console.log(`Starting ${name} API call...`);
+          const result = await promise;
+          console.log(`${name} API call succeeded:`, result);
+          return result;
+        } catch (err) {
+          console.error(`${name} API call failed:`, err);
+          throw err;
+        }
+      };
+      
+      // Load all dashboard data in parallel with debugging
+      const [statsResponse, settingsResponse, academicStatsResponse, applicationsResponse] = await Promise.all([
+        handleApiCall('getStats', adminAPI.getStats()),
+        handleApiCall('getSettings', adminAPI.getSettings()),
+        handleApiCall('getAcademicStats', academicAPI.getAcademicStats()),
+        handleApiCall('getApplications', adminAPI.getApplications())
       ]);
       
       if (statsResponse.success) {
         setStats(statsResponse.stats);
+      } else {
+        throw new Error('Failed to load admin stats');
       }
       
       if (settingsResponse.success) {
         setAdminSettings(settingsResponse.settings);
+      } else {
+        throw new Error('Failed to load admin settings');
       }
       
       if (academicStatsResponse.success) {
         setAcademicStats(academicStatsResponse.stats);
+      } else {
+        throw new Error('Failed to load academic stats');
+      }
+
+      if (applicationsResponse.success) {
+        setApplications(applicationsResponse.applications || []);
+      } else {
+        throw new Error('Failed to load applications');
       }
       
     } catch (err) {
@@ -113,6 +158,9 @@ export default function AdminDashboard() {
 
   const loadApplications = async () => {
     try {
+      console.log('=== LOADING APPLICATIONS ===');
+      console.log('Filter params:', { status: filterStatus, payment: filterPayment, search: searchTerm });
+      
       const params = {
         status: filterStatus,
         payment: filterPayment,
@@ -120,13 +168,30 @@ export default function AdminDashboard() {
       };
       
       const response = await adminAPI.getApplications(params);
+      console.log('API Response:', response);
       
-      if (response.success) {
-        setApplications(response.applications);
+      if (response?.success) {
+        console.log('Setting applications:', response.applications);
+        setApplications(response.applications || []);
+      } else {
+        console.error('API returned error:', response);
+        setError(response?.message || 'Failed to load applications');
       }
     } catch (err) {
-      console.error('Error loading applications:', err);
-      setError('Failed to load applications');
+      console.error('\n=== APPLICATION LOADING ERROR ===');
+      console.error('Error message:', err.message);
+      console.error('Response data:', err.response?.data);
+      console.error('Response status:', err.response?.status);
+      console.error('Request config:', err.config);
+      
+      // Set user-friendly error message
+      const errorMessage = err.response?.data?.message 
+        || err.response?.data?.error 
+        || err.message 
+        || 'Failed to load applications';
+      
+      setError(errorMessage);
+      setApplications([]);
     }
   };
 
@@ -251,22 +316,26 @@ export default function AdminDashboard() {
   };
 
   const pendingApplications = applications.filter(app => app.status === 'pending');
-  const approvedApplications = applications.filter(app => app.status === 'approved');
-  const rejectedApplications = applications.filter(app => app.status === 'rejected');
-  const awaitingPayment = applications.filter(app => app.status === 'approved' && app.paymentStatus === 'unpaid');
-  const fullyEnrolled = applications.filter(app => app.status === 'approved' && app.paymentStatus === 'paid');
+  const approvedApplications = applications?.filter(app => app?.status === 'approved') ?? [];
+  const rejectedApplications = applications?.filter(app => app?.status === 'rejected') ?? [];
+  const awaitingPayment = applications?.filter(app => app?.status === 'approved' && app?.paymentStatus === 'unpaid') ?? [];
+  const fullyEnrolled = applications?.filter(app => app?.status === 'approved' && app?.paymentStatus === 'paid') ?? [];
 
   const filteredApplications = applications
     .filter(app => filterStatus === 'all' || app.status === filterStatus)
     .filter(app => filterPayment === 'all' || 
       (filterPayment === 'paid' && app.paymentStatus === 'paid') ||
       (filterPayment === 'unpaid' && app.paymentStatus === 'unpaid'))
-    .filter(app => 
-      app.candidateName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      app.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      app.courseName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      app.mobileNo.includes(searchTerm)
-    );
+    .filter(app => {
+      const search = searchTerm.toLowerCase();
+      return (
+        app?.candidateName?.toLowerCase().includes(search) ||
+        app?.email?.toLowerCase().includes(search) ||
+        app?.courseName?.toLowerCase().includes(search) ||
+        app?.mobileNo?.includes(searchTerm) || 
+        false
+      );
+    });
 
   // Academic management functions
   const createAssignment = async () => {
