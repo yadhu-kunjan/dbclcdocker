@@ -1,14 +1,195 @@
 import React, { useState, useEffect } from 'react';
-import { Users, DollarSign, TrendingUp, AlertCircle, FileText, CheckCircle, XCircle, Clock, Search, Download, Mail, Phone, MapPin, Calendar, GraduationCap, Award, Bell, Eye, Shield, Activity, Briefcase, CreditCard, Send, UserCheck, Filter, Globe, User, BookOpen, ClipboardList, BarChart3, Plus, Edit, Trash2, Upload, Calendar as CalendarIcon } from 'lucide-react';
-// Assuming api.js is in a services folder, adjust path as needed
-// import { adminAPI, academicAPI } from '../../services/api.js';
+import { Users, DollarSign, Clock, CreditCard, UserCheck, BookOpen, ClipboardList, Loader2, Search, CheckCircle, XCircle, Mail, Eye, AlertCircle, Plus, Download, Edit, Trash2, Bell, Award, Activity, Shield, Briefcase, Send, FileText, Phone, Calendar, Globe, GraduationCap, MapPin, CalendarIcon } from 'lucide-react';
+import { adminAPI, academicAPI } from '../../services/api.js';
+
+export default function AdminDashboard() {
+  // Core dashboard state
+  const [activeTab, setActiveTab] = useState('applications');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  
+  // Dashboard data state
+  const [stats, setStats] = useState({
+    pending: 0,
+    approved: 0,
+    rejected: 0,
+    awaitingPayment: 0,
+    fullyEnrolled: 0,
+    totalRevenue: 0,
+    paidCount: 0
+  });
+  
+  const [adminSettings, setAdminSettings] = useState({
+    institution_name: 'DBCLC Institute of Theology',
+    admin_name: 'Dr. Sarah Johnson',
+    admin_role: 'Super Administrator',
+    admin_email: 'sarah.johnson@dbclc.edu'
+  });
+
+  // Applications state
+  const [applications, setApplications] = useState([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterStatus, setFilterStatus] = useState('all');
+  const [filterPayment, setFilterPayment] = useState('all');
+  const [selectedApplication, setSelectedApplication] = useState(null);
+  const [showDetailsModal, setShowDetailsModal] = useState(false);
+  const [showEmailModal, setShowEmailModal] = useState(false);
+
+  // Academic management state
+  const [assignments, setAssignments] = useState([]);
+  const [attendance, setAttendance] = useState([]);
+  const [selectedAssignment, setSelectedAssignment] = useState(null);
+  const [showAssignmentModal, setShowAssignmentModal] = useState(false);
+  const [showGradeModal, setShowGradeModal] = useState(false);
+  const [showAttendanceModal, setShowAttendanceModal] = useState(false);
+  const [attendanceDate, setAttendanceDate] = useState('');
+  const [attendanceRecords, setAttendanceRecords] = useState([]);
+  const [academicStats, setAcademicStats] = useState({
+    assignments: { total_assignments: 0, graded_assignments: 0, pending_assignments: 0 },
+    attendance: { total_records: 0, present_count: 0, absent_count: 0 },
+    students: { total_students: 0, active_students: 0 }
+  });
+  const [assignmentForm, setAssignmentForm] = useState({
+    title: '',
+    description: '',
+    student_id: '',
+    due_date: '',
+    max_marks: 100,
+    assignment_type: 'homework',
+    instructions: ''
+  });
+
+  // Load initial dashboard data
+  useEffect(() => {
+    loadDashboardData();
+  }, []);
+
+  const loadDashboardData = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      const [statsResponse, settingsResponse] = await Promise.all([
+        adminAPI.getStats(),
+        adminAPI.getSettings()
+      ]);
+      
+      if (statsResponse.success) {
+        setStats(statsResponse.stats);
+      } else {
+        throw new Error('Failed to load admin stats');
+      }
+      
+      if (settingsResponse.success && settingsResponse.settings) {
+        setAdminSettings(settingsResponse.settings);
+      } else {
+        throw new Error('Failed to load admin settings');
+      }
+      
+    } catch (err) {
+      console.error('Error loading dashboard data:', err);
+      setError('Failed to load dashboard data');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="text-center">
+          <p className="text-red-500 font-medium mb-4">{error}</p>
+          <button
+            onClick={loadDashboardData}
+            className="px-4 py-2 bg-blue-500 text-white rounded-xl hover:bg-blue-600 transition-colors"
+          >
+            Try Again
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Header Section */}
+      <AdminDashboardHeader 
+        adminName={adminSettings.admin_name}
+        adminRole={adminSettings.admin_role}
+        adminEmail={adminSettings.admin_email}
+      />
+
+      {/* Welcome Banner */}
+      <WelcomeBanner
+        adminName={adminSettings.admin_name}
+        institutionName={adminSettings.institution_name}
+      />
+      
+      {/* Statistics Section */}
+      <StatisticsGrid
+        stats={[
+          {
+            label: 'Total Applications',
+            value: stats.approved + stats.pending + stats.rejected,
+            icon: Users
+          },
+          {
+            label: 'Pending Review',
+            value: stats.pending,
+            icon: Clock
+          },
+          {
+            label: 'Awaiting Payment',
+            value: stats.awaitingPayment,
+            icon: CreditCard
+          },
+          {
+            label: 'Total Enrolled',
+            value: stats.fullyEnrolled,
+            icon: UserCheck
+          },
+          {
+            label: 'Total Revenue',
+            value: `₹${(stats.totalRevenue || 0).toLocaleString('en-IN')}`,
+            icon: DollarSign
+          }
+        ]}
+      />
+
+      {/* Main Content Area */}
+      <div className="bg-white rounded-2xl shadow-lg p-6">
+        <TabNavigation
+          tabs={[
+            { id: 'applications', label: 'Applications', icon: ClipboardList },
+            { id: 'academic', label: 'Academic', icon: BookOpen }
+          ]}
+          activeTab={activeTab}
+          onTabChange={setActiveTab}
+        />
+
+        <div className="mt-6">
+          {activeTab === 'applications' ? (
+            <ApplicationsTab onStatsChange={loadDashboardData} />
+          ) : (
+            <AcademicTab />
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // --- MOCK API ---
 // We'll create mock API functions to simulate the backend
 // and make the component runnable for debugging.
-const mockApi = (data, delay = 500) => 
-  new Promise(resolve => setTimeout(() => resolve(data), delay));
-
 const adminAPI = {
   getStats: () => mockApi({
     success: true,
@@ -107,9 +288,25 @@ const academicAPI = {
 };
 // --- END MOCK API ---
 
+// Helper Functions
+const getInitials = (name) => {
+  if (typeof name !== 'string' || name.length === 0) {
+    return 'NA';
+  }
+  return name.split(' ')
+    .filter(n => n)
+    .map(n => n[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2);
+};
+
+const mockApi = (data, delay = 500) => 
+  new Promise(resolve => setTimeout(() => resolve(data), delay));
 
 export default function AdminDashboard() {
-  const [applications, setApplications] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [stats, setStats] = useState({
     pending: 0,
     approved: 0,
@@ -125,47 +322,6 @@ export default function AdminDashboard() {
     admin_role: 'Super Administrator',
     admin_email: 'sarah.johnson@dbclc.edu'
   });
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-
-  // Application management state
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filterStatus, setFilterStatus] = useState('all');
-  const [filterPayment, setFilterPayment] = useState('all');
-  const [showEmailModal, setShowEmailModal] = useState(false);
-  const [selectedApplication, setSelectedApplication] = useState(null);
-  const [showDetailsModal, setShowDetailsModal] = useState(false);
-
-  // Academic management state
-  const [activeTab, setActiveTab] = useState('applications');
-  const [assignments, setAssignments] = useState([]);
-  const [attendance, setAttendance] = useState([]);
-  const [academicStats, setAcademicStats] = useState({
-    assignments: { total_assignments: 0, graded_assignments: 0, pending_assignments: 0 },
-    attendance: { total_records: 0, present_count: 0, absent_count: 0 },
-    students: { total_students: 0, active_students: 0 }
-  });
-  
-  // Assignment management state
-  const [showAssignmentModal, setShowAssignmentModal] = useState(false);
-  const [showGradeModal, setShowGradeModal] = useState(false);
-  const [selectedAssignment, setSelectedAssignment] = useState(null);
-  const [assignmentForm, setAssignmentForm] = useState({
-    title: '',
-    description: '',
-    student_id: '',
-    due_date: '',
-    max_marks: 100,
-    assignment_type: 'homework',
-    instructions: ''
-  });
-  
-  // Attendance management state
-  const [showAttendanceModal, setShowAttendanceModal] = useState(false);
-  const [attendanceDate, setAttendanceDate] = useState(new Date().toISOString().split('T')[0]);
-  const [attendanceRecords, setAttendanceRecords] = useState([]);
-
-  // Helper function to get initials safely
   /**
    * BUG FIX:
    * The original guard `if (!name)` was not robust enough.
@@ -190,40 +346,12 @@ export default function AdminDashboard() {
 
   const loadDashboardData = async () => {
     try {
-      console.log('Starting to load dashboard data...');
       setLoading(true);
       setError(null);
       
-      // Mocking token check
-      const token = 'mock-auth-token'; // localStorage.getItem('authToken');
-      console.log('Auth token:', token ? 'Present' : 'Missing');
-      
-      if (!token) {
-        console.error('No auth token found');
-        setError('Authentication required');
-        setLoading(false);
-        return;
-      }
-
-      console.log('Proceeding to load dashboard data...');
-      
-      const handleApiCall = async (name, promise) => {
-        try {
-          console.log(`Starting ${name} API call...`);
-          const result = await promise;
-          console.log(`${name} API call succeeded:`, result);
-          return result;
-        } catch (err) {
-          console.error(`${name} API call failed:`, err);
-          throw err;
-        }
-      };
-      
-      const [statsResponse, settingsResponse, academicStatsResponse, applicationsResponse] = await Promise.all([
-        handleApiCall('getStats', adminAPI.getStats()),
-        handleApiCall('getSettings', adminAPI.getSettings()),
-        handleApiCall('getAcademicStats', academicAPI.getAcademicStats()),
-        handleApiCall('getApplications', adminAPI.getApplications()) // Initial load, no params
+      const [statsResponse, settingsResponse] = await Promise.all([
+        adminAPI.getStats(),
+        adminAPI.getSettings()
       ]);
       
       if (statsResponse.success) {
@@ -236,18 +364,6 @@ export default function AdminDashboard() {
         setAdminSettings(settingsResponse.settings);
       } else {
         throw new Error('Failed to load admin settings');
-      }
-      
-      if (academicStatsResponse.success) {
-        setAcademicStats(academicStatsResponse.stats);
-      } else {
-        throw new Error('Failed to load academic stats');
-      }
-
-      if (applicationsResponse.success) {
-        setApplications(applicationsResponse.applications || []);
-      } else {
-        throw new Error('Failed to load applications');
       }
       
     } catch (err) {
@@ -323,23 +439,8 @@ export default function AdminDashboard() {
   };
 
   useEffect(() => {
-    // This effect runs once on mount to load initial dashboard stats
-    // and the first batch of applications.
     loadDashboardData();
   }, []);
-
-  useEffect(() => {
-    // This effect runs on mount *and* whenever filters change.
-    // We skip the first run (on mount) because loadDashboardData
-    // already fetches the initial applications.
-    const handler = setTimeout(() => {
-      loadApplications();
-    }, 300); // Debounce search input
-
-    return () => {
-      clearTimeout(handler);
-    };
-  }, [searchTerm, filterStatus, filterPayment]);
 
 
   const updateApplicationStatus = async (id, status) => {

@@ -150,4 +150,59 @@ adminRouter.get("/settings", verifyToken, async (req, res) => {
   }
 });
 
+// Update application status (approve/reject)
+adminRouter.patch('/applications/:id/status', verifyToken, async (req, res) => {
+  try {
+    const applicationId = req.params.id;
+    const { status } = req.body;
+
+    // Basic validation
+    if (!['approved', 'rejected', 'pending'].includes(status)) {
+      return res.status(400).json({ success: false, message: 'Invalid status value' });
+    }
+
+    // Update application status and timestamps
+    let updateQuery = '';
+    let params = [];
+
+    if (status === 'approved') {
+      updateQuery = `UPDATE temp_student SET status = ?, approved_at = NOW(), payment_status = COALESCE(payment_status, 'unpaid') WHERE id = ?`;
+      params = [status, applicationId];
+    } else if (status === 'rejected') {
+      updateQuery = `UPDATE temp_student SET status = ?, rejected_at = NOW() WHERE id = ?`;
+      params = [status, applicationId];
+    } else {
+      updateQuery = `UPDATE temp_student SET status = ? WHERE id = ?`;
+      params = [status, applicationId];
+    }
+
+    const [result] = await dbConnection.execute(updateQuery, params);
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ success: false, message: 'Application not found' });
+    }
+
+    // Fetch updated application record
+    const [rows] = await dbConnection.execute('SELECT * FROM temp_student WHERE id = ?', [applicationId]);
+    const appRow = rows[0];
+
+    const application = {
+      id: appRow.id?.toString() || '',
+      candidateName: appRow.candidate_name || '',
+      courseName: appRow.course_name || '',
+      courseFee: appRow.course_fee || '₹0',
+      email: appRow.email || '',
+      mobileNo: appRow.mobile_no || '',
+      status: appRow.status || 'pending',
+      paymentStatus: appRow.payment_status || 'unpaid'
+    };
+
+    res.json({ success: true, message: 'Status updated', application });
+  } catch (error) {
+    console.error('Error updating application status:', error);
+    res.status(500).json({ success: false, message: 'Failed to update status', error: error.message });
+  }
+});
+
 export default adminRouter;
+
