@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { getDbPool } from "../config/db.js";
 import { verifyToken } from "./auth.js";
+import { sendApprovalEmail, sendPaymentReminderEmail } from "../services/emailService.js";
 
 const adminRouter = Router();
 const dbConnection = getDbPool();
@@ -196,6 +197,17 @@ adminRouter.patch('/applications/:id/status', verifyToken, async (req, res) => {
       status: appRow.status || 'pending',
       paymentStatus: appRow.payment_status || 'unpaid'
     };
+
+    // Send approval email automatically when application is approved
+    if (status === 'approved') {
+      try {
+        await sendApprovalEmail(application);
+        console.log(`✅ Approval email sent to ${application.email}`);
+      } catch (emailError) {
+        console.error(`⚠️ Failed to send approval email to ${application.email}:`, emailError);
+        // Don't fail the request if email fails, just log it
+      }
+    }
 
     res.json({ success: true, message: 'Status updated', application });
   } catch (error) {
@@ -435,6 +447,41 @@ adminRouter.delete('/logins/:id', verifyToken, async (req, res) => {
   } catch (error) {
     console.error('Error deleting login:', error);
     res.status(500).json({ success: false, message: 'Failed to delete login', error: error.message });
+  }
+});
+
+// ============ EMAIL ENDPOINTS ============
+
+// Send payment reminder email
+adminRouter.post('/applications/:id/send-payment-email', verifyToken, async (req, res) => {
+  try {
+    const applicationId = req.params.id;
+
+    // Fetch application details
+    const [rows] = await dbConnection.execute('SELECT * FROM temp_student WHERE id = ?', [applicationId]);
+
+    if (rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Application not found' });
+    }
+
+    const appRow = rows[0];
+    const application = {
+      id: appRow.id?.toString() || '',
+      candidateName: appRow.candidate_name || '',
+      courseName: appRow.course_name || '',
+      courseFee: appRow.course_fee || '₹0',
+      email: appRow.email || '',
+      mobileNo: appRow.mobile_no || ''
+    };
+
+    // Send payment reminder email
+    await sendPaymentReminderEmail(application);
+
+    console.log(`✅ Payment reminder email sent to ${application.email}`);
+    res.json({ success: true, message: 'Payment reminder email sent successfully' });
+  } catch (error) {
+    console.error('Error sending payment email:', error);
+    res.status(500).json({ success: false, message: 'Failed to send email', error: error.message });
   }
 });
 
