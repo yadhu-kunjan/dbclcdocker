@@ -26,7 +26,16 @@ export default function ApplicationsTab() {
     try {
       setLoading(true);
       const response = await adminAPI.getApplications();
-      setApplications(response.data || []);
+      console.log('Full Applications response:', response);
+      console.log('Applications array:', response.applications);
+      console.log('Applications count:', response.applications?.length);
+
+      if (response.applications && Array.isArray(response.applications)) {
+        setApplications(response.applications);
+      } else {
+        console.warn('No applications array in response');
+        setApplications([]);
+      }
       setError(null);
     } catch (err) {
       setError('Failed to fetch applications. Please try again later.');

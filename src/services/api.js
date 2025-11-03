@@ -264,6 +264,38 @@ export const adminAPI = {
   sendPaymentEmail: async (applicationId) => {
     const response = await api.post(`/admin/applications/${applicationId}/send-payment-email`);
     return response.data;
+  },
+
+  // Mark application as paid
+  markApplicationAsPaid: async (applicationId) => {
+    const response = await api.patch(`/admin/applications/${applicationId}/payment`, { paymentStatus: 'paid' });
+    return response.data;
+  },
+
+  // Login Management
+  getLogins: async () => {
+    const response = await api.get('/admin/logins');
+    return response.data;
+  },
+
+  createLogin: async (loginData) => {
+    const response = await api.post('/admin/logins', loginData);
+    return response.data;
+  },
+
+  updateLogin: async (userId, loginData) => {
+    const response = await api.patch(`/admin/logins/${userId}`, loginData);
+    return response.data;
+  },
+
+  toggleLoginStatus: async (userId) => {
+    const response = await api.patch(`/admin/logins/${userId}/toggle-status`);
+    return response.data;
+  },
+
+  deleteLogin: async (userId) => {
+    const response = await api.delete(`/admin/logins/${userId}`);
+    return response.data;
   }
 };
 

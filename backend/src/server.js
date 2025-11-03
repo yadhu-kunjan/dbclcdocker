@@ -10,6 +10,7 @@ import facultyRoutes from './routes/faculty.js';
 import adminRoutes from './routes/admin.js';
 import academicRoutes from './routes/academic.js';
 import { verifyDbConnection } from './config/db.js';
+import { sendApprovalEmail, sendPaymentReminderEmail } from './services/emailService.js';
 import { runMigrations } from './config/migrations.js';
 import { seedDemoUsers } from './config/seedDemoUsers.js';
 
@@ -134,9 +135,89 @@ app.get('/api/courses', async (req, res) => {
     res.status(500).json({ success: false, error: 'Error fetching courses from database' });
   }
 });
+// ==================== EMAIL ROUTES ====================
 
+app.post('/api/emails/send-approval', async (req, res) => {
+  try {
+    const { applicationId, candidateName, email, courseName, courseFee, mobileNo } = req.body;
+    
+    if (!applicationId || !candidateName || !email || !courseName || !courseFee) {
+      return res.status(400).json({
+        success: false,
+        message: 'Missing required fields'
+      });
+    }
+
+    const application = {
+      id: applicationId,
+      candidateName,
+      email,
+      courseName,
+      courseFee,
+      mobileNo: mobileNo || 'N/A'
+    };
+
+    const result = await sendApprovalEmail(application);
+    
+    console.log('✅ Approval email sent to:', email);
+    
+    res.json({
+      success: true,
+      message: 'Approval email sent successfully',
+      emailId: result.emailId
+    });
+    
+  } catch (error) {
+    console.error('❌ Error sending approval email:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to send approval email',
+      error: error.message
+    });
+  }
+});
+
+app.post('/api/emails/send-payment-reminder', async (req, res) => {
+  try {
+    const { applicationId, candidateName, email, courseName, courseFee } = req.body;
+    
+    if (!applicationId || !candidateName || !email || !courseName || !courseFee) {
+      return res.status(400).json({
+        success: false,
+        message: 'Missing required fields'
+      });
+    }
+
+    const application = {
+      id: applicationId,
+      candidateName,
+      email,
+      courseName,
+      courseFee
+    };
+
+    const result = await sendPaymentReminderEmail(application);
+    
+    res.json({
+      success: true,
+      message: 'Payment reminder sent successfully',
+      emailId: result.emailId
+    });
+    
+  } catch (error) {
+    console.error('Error sending payment reminder:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to send payment reminder',
+      error: error.message
+    });
+  }
+});
+
+// ==================== END EMAIL ROUTES ====================
 
 // Start the server
 app.listen(port, () => {
-  console.log(`Server is running on http://localhost:${port}`);
+  console.log(`✅ Server is running on http://localhost:${port}`);
+  console.log(`📧 Email service initialized with Resend API`);
 });

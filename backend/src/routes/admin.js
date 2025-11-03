@@ -204,5 +204,239 @@ adminRouter.patch('/applications/:id/status', verifyToken, async (req, res) => {
   }
 });
 
+// ============ LOGIN MANAGEMENT ENDPOINTS ============
+
+// Get all logins (with user details)
+adminRouter.get('/logins', verifyToken, async (req, res) => {
+  try {
+    // Check if user is admin
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ success: false, message: 'Access denied. Admin role required.' });
+    }
+
+    const [rows] = await dbConnection.execute(`
+      SELECT u.id, u.username, u.password, u.role_id, r.role, u.is_active
+      FROM users u
+      JOIN roles r ON u.role_id = r.role_id
+      ORDER BY u.username ASC
+    `);
+
+    const logins = rows.map(row => ({
+      id: row.id,
+      username: row.username,
+      role: row.role.toLowerCase(),
+      roleId: row.role_id,
+      isActive: row.is_active !== 0,
+      createdAt: row.created_at
+    }));
+
+    res.json({ success: true, logins });
+  } catch (error) {
+    console.error('Error fetching logins:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch logins', error: error.message });
+  }
+});
+
+// Create new login
+adminRouter.post('/logins', verifyToken, async (req, res) => {
+  try {
+    // Check if user is admin
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ success: false, message: 'Access denied. Admin role required.' });
+    }
+
+    const { username, password, role } = req.body;
+
+    // Validation
+    if (!username || !password || !role) {
+      return res.status(400).json({ success: false, message: 'Username, password, and role are required' });
+    }
+
+    // Get role_id from role name
+    const [roleRows] = await dbConnection.execute(
+      'SELECT role_id FROM roles WHERE LOWER(role) = LOWER(?)',
+      [role]
+    );
+
+    if (roleRows.length === 0) {
+      return res.status(400).json({ success: false, message: 'Invalid role' });
+    }
+
+    const roleId = roleRows[0].role_id;
+
+    // Check if username already exists
+    const [existingUser] = await dbConnection.execute(
+      'SELECT id FROM users WHERE username = ?',
+      [username]
+    );
+
+    if (existingUser.length > 0) {
+      return res.status(400).json({ success: false, message: 'Username already exists' });
+    }
+
+    // Generate user ID based on role
+    const rolePrefix = role === 'admin' ? 'ITHA' : role === 'faculty' ? 'ITHF' : 'ITH';
+    const [lastUser] = await dbConnection.execute(
+      `SELECT id FROM users WHERE id LIKE ? ORDER BY id DESC LIMIT 1`,
+      [`${rolePrefix}%`]
+    );
+
+    let newId;
+    if (lastUser.length > 0) {
+      const lastNum = parseInt(lastUser[0].id.substring(rolePrefix.length)) || 0;
+      newId = `${rolePrefix}${String(lastNum + 1).padStart(2, '0')}`;
+    } else {
+      newId = `${rolePrefix}01`;
+    }
+
+    // Insert new user
+    const [result] = await dbConnection.execute(
+      'INSERT INTO users (id, username, password, role_id, is_active) VALUES (?, ?, ?, ?, 1)',
+      [newId, username, password, roleId]
+    );
+
+    res.json({
+      success: true,
+      message: 'Login created successfully',
+      login: {
+        id: newId,
+        username,
+        role: role.toLowerCase(),
+        roleId,
+        isActive: true
+      }
+    });
+  } catch (error) {
+    console.error('Error creating login:', error);
+    res.status(500).json({ success: false, message: 'Failed to create login', error: error.message });
+  }
+});
+
+// Update login (change password or role)
+adminRouter.patch('/logins/:id', verifyToken, async (req, res) => {
+  try {
+    // Check if user is admin
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ success: false, message: 'Access denied. Admin role required.' });
+    }
+
+    const userId = req.params.id;
+    const { password, role } = req.body;
+
+    // Build update query
+    let updateFields = [];
+    let params = [];
+
+    if (password) {
+      updateFields.push('password = ?');
+      params.push(password);
+    }
+
+    if (role) {
+      const [roleRows] = await dbConnection.execute(
+        'SELECT role_id FROM roles WHERE LOWER(role) = LOWER(?)',
+        [role]
+      );
+
+      if (roleRows.length === 0) {
+        return res.status(400).json({ success: false, message: 'Invalid role' });
+      }
+
+      updateFields.push('role_id = ?');
+      params.push(roleRows[0].role_id);
+    }
+
+    if (updateFields.length === 0) {
+      return res.status(400).json({ success: false, message: 'No fields to update' });
+    }
+
+    params.push(userId);
+
+    const [result] = await dbConnection.execute(
+      `UPDATE users SET ${updateFields.join(', ')} WHERE id = ?`,
+      params
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    res.json({ success: true, message: 'Login updated successfully' });
+  } catch (error) {
+    console.error('Error updating login:', error);
+    res.status(500).json({ success: false, message: 'Failed to update login', error: error.message });
+  }
+});
+
+// Toggle login active status
+adminRouter.patch('/logins/:id/toggle-status', verifyToken, async (req, res) => {
+  try {
+    // Check if user is admin
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ success: false, message: 'Access denied. Admin role required.' });
+    }
+
+    const userId = req.params.id;
+
+    // Get current status
+    const [userRows] = await dbConnection.execute(
+      'SELECT is_active FROM users WHERE id = ?',
+      [userId]
+    );
+
+    if (userRows.length === 0) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    const newStatus = userRows[0].is_active ? 0 : 1;
+
+    // Update status
+    await dbConnection.execute(
+      'UPDATE users SET is_active = ? WHERE id = ?',
+      [newStatus, userId]
+    );
+
+    res.json({
+      success: true,
+      message: `Login ${newStatus ? 'activated' : 'deactivated'} successfully`,
+      isActive: newStatus === 1
+    });
+  } catch (error) {
+    console.error('Error toggling login status:', error);
+    res.status(500).json({ success: false, message: 'Failed to toggle status', error: error.message });
+  }
+});
+
+// Delete login
+adminRouter.delete('/logins/:id', verifyToken, async (req, res) => {
+  try {
+    // Check if user is admin
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ success: false, message: 'Access denied. Admin role required.' });
+    }
+
+    const userId = req.params.id;
+
+    // Prevent deleting the current admin user
+    if (userId === req.user.id) {
+      return res.status(400).json({ success: false, message: 'Cannot delete your own account' });
+    }
+
+    const [result] = await dbConnection.execute(
+      'DELETE FROM users WHERE id = ?',
+      [userId]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    res.json({ success: true, message: 'Login deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting login:', error);
+    res.status(500).json({ success: false, message: 'Failed to delete login', error: error.message });
+  }
+});
+
 export default adminRouter;
 

@@ -326,8 +326,20 @@ export async function runMigrations() {
       console.log('⚠️ Error creating/populating courses table:', error.message);
     }
 
+    // Add is_active column to users table if it doesn't exist
+    try {
+      await pool.execute('ALTER TABLE users ADD COLUMN is_active TINYINT(1) DEFAULT 1');
+      console.log('✅ Added is_active column to users table');
+    } catch (error) {
+      if (error.code === 'ER_DUP_FIELDNAME') {
+        console.log('✅ is_active column already exists');
+      } else {
+        console.log('⚠️ Error adding is_active column:', error.message);
+      }
+    }
+
     console.log('✅ Database migrations completed successfully');
-    
+
   } catch (error) {
     console.error('❌ Migration error:', error);
     throw error;
