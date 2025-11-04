@@ -13,7 +13,10 @@ const ProgramsPage = () => {
   useEffect(() => {
     const fetchCourses = async () => {
       try {
-        const response = await api.get('/courses');
+        // Add cache-busting parameter to ensure fresh data
+        const response = await api.get('/courses', {
+          params: { _t: Date.now() }
+        });
         if (response.data.success) {
           setCourses(response.data.courses);
         }

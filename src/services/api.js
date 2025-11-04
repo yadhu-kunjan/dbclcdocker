@@ -17,12 +17,19 @@ api.interceptors.request.use((config) => {
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
-  
+
   // Remove Content-Type header for FormData to let browser set it with boundary
   if (config.data instanceof FormData) {
     delete config.headers['Content-Type'];
   }
-  
+
+  // Disable caching for GET requests to ensure fresh data
+  if (config.method === 'get') {
+    config.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate';
+    config.headers['Pragma'] = 'no-cache';
+    config.headers['Expires'] = '0';
+  }
+
   return config;
 });
 
@@ -295,6 +302,32 @@ export const adminAPI = {
 
   deleteLogin: async (userId) => {
     const response = await api.delete(`/admin/logins/${userId}`);
+    return response.data;
+  },
+
+  // Course Management
+  getCourses: async () => {
+    const response = await api.get('/admin/courses');
+    return response.data;
+  },
+
+  getCourse: async (courseId) => {
+    const response = await api.get(`/admin/courses/${courseId}`);
+    return response.data;
+  },
+
+  createCourse: async (courseData) => {
+    const response = await api.post('/admin/courses', courseData);
+    return response.data;
+  },
+
+  updateCourse: async (courseId, courseData) => {
+    const response = await api.put(`/admin/courses/${courseId}`, courseData);
+    return response.data;
+  },
+
+  deleteCourse: async (courseId) => {
+    const response = await api.delete(`/admin/courses/${courseId}`);
     return response.data;
   }
 };

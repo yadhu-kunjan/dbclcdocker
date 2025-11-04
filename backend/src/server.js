@@ -29,7 +29,7 @@ const asyncHandler = (fn) => (req, res, next) => {
 app.use(cors({
   origin: ['http://localhost:8080', 'http://localhost:80', 'http://localhost:5173', 'http://127.0.0.1:5173'],
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Cache-Control', 'Pragma', 'Expires'],
   credentials: true
 }));
 app.use(express.json()); // Parse JSON bodies
@@ -49,6 +49,12 @@ verifyDbConnection()
     console.error('Error connecting to the database:', err);
   });
 
+// Request logging middleware (should be BEFORE routes)
+app.use((req, res, next) => {
+  console.log(`${req.method} ${req.originalUrl}`);
+  next();
+});
+
 // API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/applications', applicationRoutes);
@@ -56,33 +62,6 @@ app.use('/api/student', studentRoutes);
 app.use('/api/faculty', facultyRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/academic', academicRoutes);
-
-// Error handling middleware
-app.use((err, req, res, next) => {
-  console.error('Error:', err.stack);
-  res.status(500).json({
-    success: false,
-    error: 'Internal Server Error',
-    message: err.message,
-    stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
-  });
-});
-
-// 404 handler
-app.use((req, res) => {
-  console.log(`404 - Not Found: ${req.method} ${req.originalUrl}`);
-  res.status(404).json({
-    success: false,
-    error: 'Not Found',
-    message: `Cannot ${req.method} ${req.originalUrl}`
-  });
-});
-
-// Request logging middleware
-app.use((req, res, next) => {
-  console.log(`${req.method} ${req.originalUrl}`);
-  next();
-});
 
 // Simple test endpoint
 app.get('/api/users', async (req, res) => {
@@ -105,10 +84,18 @@ app.get('/api/users', async (req, res) => {
 // API endpoint to get courses from database
 app.get('/api/courses', async (req, res) => {
   try {
+    console.log('=== FETCHING COURSES (PUBLIC) ===');
+    // Set cache control headers to prevent caching
+    res.set({
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      'Pragma': 'no-cache',
+      'Expires': '0'
+    });
+
     const { getDbPool } = await import('./config/db.js');
     const pool = getDbPool();
     const [courses] = await pool.execute(`
-      SELECT 
+      SELECT
         id,
         title,
         duration,
@@ -119,19 +106,34 @@ app.get('/api/courses', async (req, res) => {
         level,
         credits,
         color
-      FROM courses 
+      FROM courses
       ORDER BY level, title
     `);
-    
-    // Parse JSON subjects field
-    const formattedCourses = courses.map(course => ({
-      ...course,
-      subjects: course.subjects ? JSON.parse(course.subjects) : []
-    }));
-    
+
+    console.log(`✅ Found ${courses.length} courses in database`);
+
+    // Parse JSON subjects field with error handling
+    const formattedCourses = courses.map(course => {
+      let subjects = [];
+      if (course.subjects) {
+        try {
+          subjects = JSON.parse(course.subjects);
+        } catch (parseError) {
+          console.warn(`⚠️ Failed to parse subjects for course ${course.id}:`, course.subjects);
+          // If it's not valid JSON, treat it as a single subject
+          subjects = [course.subjects];
+        }
+      }
+      return {
+        ...course,
+        subjects
+      };
+    });
+
+    console.log('✅ Returning courses to frontend');
     res.json({ success: true, courses: formattedCourses });
   } catch (err) {
-    console.error('Database error:', err);
+    console.error('❌ Database error:', err);
     res.status(500).json({ success: false, error: 'Error fetching courses from database' });
   }
 });
@@ -215,6 +217,27 @@ app.post('/api/emails/send-payment-reminder', async (req, res) => {
 });
 
 // ==================== END EMAIL ROUTES ====================
+
+// Error handling middleware (must be AFTER all routes)
+app.use((err, req, res, next) => {
+  console.error('Error:', err.stack);
+  res.status(500).json({
+    success: false,
+    error: 'Internal Server Error',
+    message: err.message,
+    stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
+  });
+});
+
+// 404 handler (must be LAST, after all routes)
+app.use((req, res) => {
+  console.log(`404 - Not Found: ${req.method} ${req.originalUrl}`);
+  res.status(404).json({
+    success: false,
+    error: 'Not Found',
+    message: `Cannot ${req.method} ${req.originalUrl}`
+  });
+});
 
 // Start the server
 app.listen(port, () => {

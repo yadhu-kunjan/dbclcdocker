@@ -67,35 +67,40 @@ adminRouter.get("/applications", verifyToken, async (req, res) => {
 });
 
 adminRouter.get("/stats", verifyToken, async (req, res) => {
+  // Default stats object (defined outside try block)
+  const defaultStats = {
+    total: 0,
+    pending: 0,
+    approved: 0,
+    rejected: 0,
+    awaitingPayment: 0,
+    fullyEnrolled: 0,
+    paidCount: 0,
+    totalRevenue: 0
+  };
+
   try {
+    console.log('=== FETCHING ADMIN STATS ===');
+
     // Check if table exists
     const [tables] = await dbConnection.execute(
       "SHOW TABLES LIKE 'temp_student'"
     );
 
-    // Default stats object
-    const defaultStats = {
-      total: 0,
-      pending: 0,
-      approved: 0,
-      rejected: 0,
-      awaitingPayment: 0,
-      fullyEnrolled: 0,
-      paidCount: 0,
-      totalRevenue: 0
-    };
-
     if (tables.length === 0) {
+      console.log('⚠️ temp_student table not found, returning default stats');
       // Table doesn't exist, return default stats
-      return res.json({ 
-        success: true, 
+      return res.json({
+        success: true,
         stats: defaultStats,
         message: 'No applications table found'
       });
     }
 
+    console.log('✅ temp_student table exists, fetching stats');
+
     const [applications] = await dbConnection.execute(
-      `SELECT 
+      `SELECT
         COUNT(*) as total,
         SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending,
         SUM(CASE WHEN status = 'approved' THEN 1 ELSE 0 END) as approved,
@@ -106,7 +111,9 @@ adminRouter.get("/stats", verifyToken, async (req, res) => {
         0 as totalRevenue
       FROM temp_student`
     );
-    
+
+    console.log('✅ Stats query result:', applications[0]);
+
     // Transform the stats and ensure all values are numbers
     const stats = {
       pending: parseInt(applications[0].pending || 0),
@@ -117,16 +124,18 @@ adminRouter.get("/stats", verifyToken, async (req, res) => {
       totalRevenue: parseFloat(applications[0].totalRevenue || 0),
       paidCount: parseInt(applications[0].paidCount || 0)
     };
-    
-    res.json({ 
-      success: true, 
+
+    console.log('✅ Returning stats:', stats);
+
+    res.json({
+      success: true,
       stats,
       raw: applications[0] // Include raw data for debugging
     });
   } catch (error) {
-    console.error('Error fetching admin stats:', error);
-    res.status(500).json({ 
-      success: false, 
+    console.error('❌ Error fetching admin stats:', error);
+    res.status(500).json({
+      success: false,
       error: 'Failed to fetch statistics',
       details: error.message,
       stats: defaultStats // Return default stats even on error
@@ -482,6 +491,236 @@ adminRouter.post('/applications/:id/send-payment-email', verifyToken, async (req
   } catch (error) {
     console.error('Error sending payment email:', error);
     res.status(500).json({ success: false, message: 'Failed to send email', error: error.message });
+  }
+});
+
+// ============ COURSE MANAGEMENT ENDPOINTS ============
+
+// Get all courses
+adminRouter.get('/courses', verifyToken, async (req, res) => {
+  try {
+    console.log('=== FETCHING ALL COURSES (ADMIN) ===');
+    const [courses] = await dbConnection.execute(
+      'SELECT * FROM courses ORDER BY created_at DESC'
+    );
+
+    console.log(`✅ Found ${courses.length} courses in database`);
+
+    // Parse subjects JSON for each course
+    const coursesWithParsedSubjects = courses.map(course => ({
+      ...course,
+      subjects: course.subjects ? JSON.parse(course.subjects) : []
+    }));
+
+    console.log('✅ Returning courses to admin dashboard');
+    res.json({
+      success: true,
+      courses: coursesWithParsedSubjects
+    });
+  } catch (err) {
+    console.error('❌ Error fetching courses:', err);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching courses'
+    });
+  }
+});
+
+// Get a single course
+adminRouter.get('/courses/:id', verifyToken, async (req, res) => {
+  try {
+    const courseId = req.params.id;
+
+    const [courses] = await dbConnection.execute(
+      'SELECT * FROM courses WHERE id = ?',
+      [courseId]
+    );
+
+    if (courses.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Course not found'
+      });
+    }
+
+    const course = {
+      ...courses[0],
+      subjects: courses[0].subjects ? JSON.parse(courses[0].subjects) : []
+    };
+
+    res.json({
+      success: true,
+      course
+    });
+  } catch (err) {
+    console.error('Error fetching course:', err);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching course'
+    });
+  }
+});
+
+// Create a new course
+adminRouter.post('/courses', verifyToken, async (req, res) => {
+  try {
+    const { title, duration, description, subjects, fee, intake, level, credits, color } = req.body;
+
+    // Validate required fields
+    if (!title || !level) {
+      return res.status(400).json({
+        success: false,
+        message: 'Title and level are required'
+      });
+    }
+
+    // Convert subjects array to JSON string
+    const subjectsJson = JSON.stringify(subjects || []);
+
+    const [result] = await dbConnection.execute(
+      `INSERT INTO courses
+       (title, duration, description, subjects, fee, intake, level, credits, color)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [title, duration, description, subjectsJson, fee, intake, level, credits, color || 'blue']
+    );
+
+    // Fetch the newly created course
+    const [newCourse] = await dbConnection.execute(
+      'SELECT * FROM courses WHERE id = ?',
+      [result.insertId]
+    );
+
+    const course = {
+      ...newCourse[0],
+      subjects: newCourse[0].subjects ? JSON.parse(newCourse[0].subjects) : []
+    };
+
+    res.json({
+      success: true,
+      message: 'Course created successfully',
+      course
+    });
+  } catch (err) {
+    console.error('Error creating course:', err);
+    res.status(500).json({
+      success: false,
+      message: 'Error creating course',
+      error: err.message
+    });
+  }
+});
+
+// Update a course
+adminRouter.put('/courses/:id', verifyToken, async (req, res) => {
+  try {
+    const { title, duration, description, subjects, fee, intake, level, credits, color } = req.body;
+    const courseId = req.params.id;
+
+    console.log('=== UPDATE COURSE REQUEST ===');
+    console.log('Course ID:', courseId);
+    console.log('Request body:', req.body);
+
+    // Validate required fields
+    if (!title || !level) {
+      console.log('❌ Validation failed: Missing title or level');
+      return res.status(400).json({
+        success: false,
+        message: 'Title and level are required'
+      });
+    }
+
+    // Check if course exists
+    const [existing] = await dbConnection.execute(
+      'SELECT id FROM courses WHERE id = ?',
+      [courseId]
+    );
+
+    if (existing.length === 0) {
+      console.log('❌ Course not found:', courseId);
+      return res.status(404).json({
+        success: false,
+        message: 'Course not found'
+      });
+    }
+
+    console.log('✅ Course exists, proceeding with update');
+
+    // Convert subjects array to JSON string
+    const subjectsJson = JSON.stringify(subjects || []);
+
+    const updateResult = await dbConnection.execute(
+      `UPDATE courses
+       SET title = ?, duration = ?, description = ?, subjects = ?,
+           fee = ?, intake = ?, level = ?, credits = ?, color = ?
+       WHERE id = ?`,
+      [title, duration, description, subjectsJson, fee, intake, level, credits, color || 'blue', courseId]
+    );
+
+    console.log('✅ Update executed, affected rows:', updateResult[0].affectedRows);
+
+    // Fetch the updated course
+    const [updatedCourse] = await dbConnection.execute(
+      'SELECT * FROM courses WHERE id = ?',
+      [courseId]
+    );
+
+    console.log('✅ Fetched updated course:', updatedCourse[0]);
+
+    const course = {
+      ...updatedCourse[0],
+      subjects: updatedCourse[0].subjects ? JSON.parse(updatedCourse[0].subjects) : []
+    };
+
+    console.log('✅ Course update successful');
+    res.json({
+      success: true,
+      message: 'Course updated successfully',
+      course
+    });
+  } catch (err) {
+    console.error('❌ Error updating course:', err);
+    res.status(500).json({
+      success: false,
+      message: 'Error updating course',
+      error: err.message
+    });
+  }
+});
+
+// Delete a course
+adminRouter.delete('/courses/:id', verifyToken, async (req, res) => {
+  try {
+    const courseId = req.params.id;
+
+    // Check if course exists
+    const [existing] = await dbConnection.execute(
+      'SELECT id FROM courses WHERE id = ?',
+      [courseId]
+    );
+
+    if (existing.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Course not found'
+      });
+    }
+
+    await dbConnection.execute(
+      'DELETE FROM courses WHERE id = ?',
+      [courseId]
+    );
+
+    res.json({
+      success: true,
+      message: 'Course deleted successfully'
+    });
+  } catch (err) {
+    console.error('Error deleting course:', err);
+    res.status(500).json({
+      success: false,
+      message: 'Error deleting course',
+      error: err.message
+    });
   }
 });
 
