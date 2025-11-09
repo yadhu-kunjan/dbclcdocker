@@ -1,0 +1,231 @@
+import { Router } from 'express';
+import jwt from 'jsonwebtoken';
+import bcrypt from 'bcryptjs';
+import { getDbPool } from '../config/db.js';
+
+const router = Router();
+
+router.post('/login', async (req, res) => {
+  const { username, password, role } = req.body || {};
+  console.log('=== LOGIN REQUEST ===');
+  console.log('Username:', username);
+  console.log('Password length:', password?.length);
+  console.log('Role:', role);
+  console.log('Request body:', req.body);
+  
+  if (!username || !password) {
+    console.log('❌ Missing username or password');
+    return res.status(400).json({ success: false, message: 'Username and password are required' });
+  }
+  
+  try {
+    const pool = getDbPool();
+    
+    // First try the users + roles schema (new)
+    console.log('Trying users table first...');
+    const [rows] = await pool.execute(
+      `SELECT u.id, u.username, u.password, u.role_id, r.role 
+       FROM users u 
+       JOIN roles r ON u.role_id = r.role_id 
+       WHERE u.username = ? OR u.id = ?`,
+      [username, username]
+    );
+
+    console.log('=== USERS TABLE QUERY RESULT ===');
+    console.log('Rows found:', rows?.length);
+    console.log('First row:', rows?.[0] ? {
+      id: rows[0].id,
+      username: rows[0].username,
+      role_id: rows[0].role_id,
+      role: rows[0].role
+    } : null);
+
+    let user = rows?.[0];
+
+    // If no user found in users table, try legacy login table
+    if (!user) {
+      console.log('⚠️ User not found in users table, trying legacy login table...');
+      const [loginRows] = await pool.execute(
+        'SELECT * FROM login WHERE username = ? OR user_id = ?',
+        [username, username]
+      );
+      
+      console.log('=== LOGIN TABLE QUERY RESULT ===');
+      console.log('Rows found:', loginRows?.length);
+      console.log('First row:', loginRows?.[0] ? {
+        user_id: loginRows[0].user_id,
+        username: loginRows[0].username
+      } : null);
+      
+      if (loginRows?.[0]) {
+        // Map legacy login table row to user object shape
+        user = {
+          id: loginRows[0].user_id,
+          username: loginRows[0].username,
+          password: loginRows[0].password,
+          role: role?.toLowerCase() || 'student' // Use provided role or default to student
+        };
+        console.log('✅ Found user in legacy login table');
+      }
+    }
+
+    if (!user) {
+      console.log('❌ No user found with username:', username);
+      return res.status(401).json({ success: false, message: 'Invalid credentials' });
+    }
+    
+    console.log('=== FOUND USER ===');
+    console.log('User ID:', user.id);
+    console.log('Username:', user.username);
+    console.log('Has password:', !!user.password);
+    console.log('Role:', user.role);
+
+    // Since passwords in the imported SQL are plain text, compare directly
+    const passwordOk = (password === user.password);
+    console.log('=== PASSWORD CHECK ===');
+    console.log('Password lengths match:', password.length === user.password?.length);
+    console.log('Password match:', passwordOk);
+    
+    if (!passwordOk) {
+      console.log('❌ Password mismatch');
+      return res.status(401).json({ success: false, message: 'Invalid credentials' });
+    }
+    
+    // Convert role to lowercase for consistency
+    const normalizedRole = user.role.toLowerCase();
+    const normalizedRequestRole = role ? role.toLowerCase() : null;
+    
+    console.log('=== ROLE COMPARISON ===');
+    console.log('Database role:', user.role);
+    console.log('Normalized role:', normalizedRole);
+    console.log('Request role:', role);
+    console.log('Normalized request role:', normalizedRequestRole);
+    
+    // If role is specified in request, verify it matches the user's role
+    if (normalizedRequestRole && normalizedRequestRole !== normalizedRole) {
+      console.log('❌ Role mismatch - rejecting login');
+      return res.status(401).json({ success: false, message: 'Invalid role for this user' });
+    }
+    
+    console.log('✅ Role validation passed');
+    
+    if (!process.env.JWT_SECRET) {
+      console.error('❌ JWT_SECRET not set in environment');
+      return res.status(500).json({ success: false, message: 'Server configuration error' });
+    }
+
+    // Create JWT payload
+    const payload = { 
+      id: user.id, 
+      userId: user.id,
+      role: normalizedRole, 
+      username: user.username 
+    };
+    
+    const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '7d' });
+    
+    const responseData = {
+      success: true,
+      user: { 
+        id: String(user.id), 
+        userId: String(user.id),
+        username: user.username, 
+        role: normalizedRole,
+        name: user.username, // Use username as name since no display name column
+        email: `${user.username}@dbclc.com` // Generated placeholder email
+      },
+      token,
+    };
+    
+    console.log('=== LOGIN SUCCESS ===');
+    console.log('Response:', {
+      ...responseData,
+      token: token ? '(valid token)' : undefined
+    });
+    
+    return res.json(responseData);
+  } catch (err) {
+    console.error('=== LOGIN ERROR ===');
+    console.error('Error message:', err.message);
+    console.error('Error stack:', err.stack);
+    return res.status(500).json({ 
+      success: false, 
+      message: 'Login failed', 
+      error: err.message 
+    });
+  }
+});
+
+router.post('/logout', (_req, res) => {
+  return res.json({ success: true, message: 'Logged out successfully' });
+});
+
+// Middleware to verify JWT token and get user info
+export const verifyToken = async (req, res, next) => {
+  try {
+    const token = req.headers.authorization?.split(' ')[1];
+    if (!token) {
+      return res.status(401).json({ success: false, message: 'No token provided' });
+    }
+
+    if (!process.env.JWT_SECRET) {
+      console.error('❌ JWT_SECRET not set in environment');
+      return res.status(500).json({ success: false, message: 'Server configuration error' });
+    }
+
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const pool = getDbPool();
+    
+    // Get user details from users and roles tables
+    const [rows] = await pool.execute(
+      `SELECT u.id, u.username, r.role 
+       FROM users u 
+       JOIN roles r ON u.role_id = r.role_id 
+       WHERE u.id = ?`,
+      [decoded.id]
+    );
+
+    if (rows.length === 0) {
+      // Try legacy login table
+      const [loginRows] = await pool.execute(
+        'SELECT * FROM login WHERE user_id = ?',
+        [decoded.id]
+      );
+
+      if (loginRows.length === 0) {
+        return res.status(401).json({ success: false, message: 'User not found' });
+      }
+
+      // Use legacy login data
+      req.user = {
+        id: String(loginRows[0].user_id),
+        userId: String(loginRows[0].user_id),
+        username: loginRows[0].username,
+        role: decoded.role,
+        name: loginRows[0].username,
+        email: `${loginRows[0].username}@dbclc.com`
+      };
+    } else {
+      const user = rows[0];
+      req.user = {
+        id: String(user.id),
+        userId: String(user.id),
+        username: user.username,
+        role: user.role.toLowerCase(),
+        name: user.username,
+        email: `${user.username}@dbclc.com`
+      };
+    }
+    
+    next();
+  } catch (error) {
+    console.error('Token verification error:', error);
+    return res.status(401).json({ success: false, message: 'Invalid token' });
+  }
+};
+
+router.get('/me', verifyToken, (req, res) => {
+  return res.json({ success: true, user: req.user });
+});
+
+export default router;
