@@ -48,12 +48,21 @@ router.post('/', upload.fields([
   { name: 'certificates', maxCount: 1 }
 ]), async (req, res) => {
   try {
-    console.log('POST /applications called (multipart aware)');
-
+    console.log('=== POST /applications DEBUG ===');
+    console.log('Request body:', req.body);
+    console.log('Request files:', req.files);
+    console.log('Form data keys:', Object.keys(req.body));
+    
     const pool = getDbPool();
-
-    // Extract form fields from req.body. Some fields (like selectedCourses) may be JSON strings.
     const form = req.body || {};
+    
+    // Debug form data
+    console.log('Parsed form data:', {
+      candidateName: form.candidateName,
+      fullAddress: form.fullAddress,
+      selectedCourses: form.selectedCourses,
+      email: form.email
+    });
 
     // Normalize selectedCourses: could be JSON string or array or single value
     let courseName = null;
@@ -84,23 +93,25 @@ router.post('/', upload.fields([
       return res.status(400).json({ success: false, message: 'Certificates PDF must be <= 5MB' });
     }
 
-    // Map fields to DB columns per your specification
+    // Map fields to DB columns - fix the field names
     const values = [
-      form.candidateName || null,               // candidate_name
-      form.fullAddress || null,                // full_address
-      courseName || null,                      // course_name
-      form.dateOfBirth || null,                // date_of_birth
-      form.fatherName || null,                 // father_name
-      form.religion || null,                   // religion
-      form.caste || null,                      // caste
-      form.nationality || null,                // nationality
-      form.educationalQualification || form.education || null, // educational_qualification
-      form.email || null,                      // email
-      form.mobileNo || null,                   // mobile_no
-      form.superintendentOfServer || form.superintendantOfServer || null, // superintendant_of_server
-      photoFile ? photoFile.filename : null,   // photo_path
-      certFile ? certFile.filename : null      // certificate_path
+      form.candidateName || null,
+      form.fullAddress || null,
+      courseName || null,
+      form.dateOfBirth || null,
+      form.fatherName || null,
+      form.religion || null,
+      form.caste || null,
+      form.nationality || null,
+      form.education || form.educationalQualification || null, // Try both field names
+      form.email || null,
+      form.mobileNo || null,
+      form.superintendantOfServer || form.superintendentOfServer || null,
+      photoFile ? photoFile.filename : null,
+      certFile ? certFile.filename : null
     ];
+
+    console.log('Values to insert:', values);
 
     // Try inserting using the user's requested column layout first
     const preferredInsert = `

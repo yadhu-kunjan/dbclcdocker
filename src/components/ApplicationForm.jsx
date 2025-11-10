@@ -39,10 +39,10 @@ const ApplicationForm = () => {
     religion: 'Christian',
     caste: '',
     nationality: '',
-    educationalQualification: '',
+    education: '',  // Changed from educationalQualification
     email: '',
     mobileNo: '',
-    superintendentOfServer: ''
+    superintendantOfServer: ''  // Fixed spelling to match DB
   });
   
   const [photo, setPhoto] = useState(null);
@@ -123,13 +123,11 @@ const ApplicationForm = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     
+    console.log('=== FORM SUBMISSION DEBUG ===');
+    console.log('Form data before submission:', formData);
+    
     if (formData.selectedCourses.length === 0) {
       alert('Please select at least one course');
-      return;
-    }
-    
-    if (!certificates) {
-      alert('Please upload your degree and grade certificates');
       return;
     }
     
@@ -137,16 +135,17 @@ const ApplicationForm = () => {
 
     try {
       const success = await submitApplication(formData, photo, certificates);
+      console.log('Submission result:', success);
       
       if (success) {
-        alert('Application submitted successfully! You will receive a confirmation email shortly.');
+        alert('Application submitted successfully!');
         navigate('/');
       } else {
-        alert('Failed to submit application. Please try again.');
+        alert('Failed to submit application. Check console for errors.');
       }
     } catch (error) {
       console.error('Application submission error:', error);
-      alert('Failed to submit application. Please try again.');
+      alert('Failed to submit application. Check console for errors.');
     }
     
     setIsSubmitting(false);
