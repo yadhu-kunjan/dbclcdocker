@@ -1,28 +1,53 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Send, User, MapPin, BookOpen, Calendar, Users, Globe, GraduationCap, Mail, Phone, Shield, Camera, Upload, X } from 'lucide-react';
+import { ArrowLeft, Send, User, MapPin, BookOpen, Calendar, Users, Globe, GraduationCap, Mail, Phone, Shield, Camera, Upload, X, FileText } from 'lucide-react';
 import { useApplications } from '../contexts/ApplicationContext';
-import { courses } from '../data/courses';
+import api from '../services/api';
 
 const ApplicationForm = () => {
   const navigate = useNavigate();
   const { submitApplication } = useApplications();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [courses, setCourses] = useState([]);
+  const [loadingCourses, setLoadingCourses] = useState(true);
+
+  // Fetch courses from API
+  useEffect(() => {
+    const fetchCourses = async () => {
+      try {
+        const response = await api.get('/courses');
+        if (response.data.success) {
+          setCourses(response.data.courses);
+        }
+      } catch (error) {
+        console.error('Error fetching courses:', error);
+        setCourses([]);
+      } finally {
+        setLoadingCourses(false);
+      }
+    };
+
+    fetchCourses();
+  }, []);
+
   const [formData, setFormData] = useState({
     candidateName: '',
     fullAddress: '',
-    courseName: '',
+    selectedCourses: [],
     dateOfBirth: '',
     fatherName: '',
-    religionCaste: '',
+    religion: 'Christian',
+    caste: '',
     nationality: '',
     educationalQualification: '',
     email: '',
     mobileNo: '',
     superintendentOfServer: ''
   });
+  
   const [photo, setPhoto] = useState(null);
   const [photoPreview, setPhotoPreview] = useState(null);
+  const [certificates, setCertificates] = useState(null);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -32,16 +57,28 @@ const ApplicationForm = () => {
     }));
   };
 
+  const handleCourseSelection = (e) => {
+    const options = e.target.options;
+    const selected = [];
+    for (let i = 0; i < options.length; i++) {
+      if (options[i].selected) {
+        selected.push(options[i].value);
+      }
+    }
+    setFormData(prev => ({
+      ...prev,
+      selectedCourses: selected
+    }));
+  };
+
   const handlePhotoChange = (e) => {
     const file = e.target.files[0];
     if (file) {
-      // Validate file type
       if (!file.type.startsWith('image/')) {
         alert('Please select an image file');
         return;
       }
       
-      // Validate file size (500KB max)
       if (file.size > 500 * 1024) {
         alert('File size must be less than 500KB');
         return;
@@ -49,7 +86,6 @@ const ApplicationForm = () => {
       
       setPhoto(file);
       
-      // Create preview
       const reader = new FileReader();
       reader.onload = (e) => {
         setPhotoPreview(e.target.result);
@@ -58,20 +94,49 @@ const ApplicationForm = () => {
     }
   };
 
+  const handleCertificatesChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      if (file.type !== 'application/pdf') {
+        alert('Please select a PDF file');
+        return;
+      }
+      
+      if (file.size > 5 * 1024 * 1024) {
+        alert('File size must be less than 5MB');
+        return;
+      }
+      
+      setCertificates(file);
+    }
+  };
+
   const removePhoto = () => {
     setPhoto(null);
     setPhotoPreview(null);
   };
 
+  const removeCertificates = () => {
+    setCertificates(null);
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+    
+    if (formData.selectedCourses.length === 0) {
+      alert('Please select at least one course');
+      return;
+    }
+    
+    if (!certificates) {
+      alert('Please upload your degree and grade certificates');
+      return;
+    }
+    
     setIsSubmitting(true);
 
-    console.log('Submitting application with photo:', photo);
-    console.log('Form data:', formData);
-
     try {
-      const success = await submitApplication(formData, photo);
+      const success = await submitApplication(formData, photo, certificates);
       
       if (success) {
         alert('Application submitted successfully! You will receive a confirmation email shortly.');
@@ -86,6 +151,13 @@ const ApplicationForm = () => {
     
     setIsSubmitting(false);
   };
+
+  const casteOptions = [
+    'Forward Caste (FC)',
+    'Other Backward Class (OBC)',
+    'Scheduled Caste (SC)',
+    'Scheduled Tribe (ST)'
+  ];
 
   const formFields = [
     {
@@ -105,9 +177,9 @@ const ApplicationForm = () => {
       required: true
     },
     {
-      name: 'courseName',
-      label: 'Course Name',
-      type: 'select',
+      name: 'selectedCourses',
+      label: 'Select Courses',
+      type: 'multiselect',
       icon: BookOpen,
       required: true,
       options: courses.map(course => course.title)
@@ -128,12 +200,29 @@ const ApplicationForm = () => {
       required: true
     },
     {
-      name: 'religionCaste',
-      label: 'Religion/Caste',
+      name: 'educationalQualification',
+      label: 'Educational Qualification',
+      type: 'select',
+      icon: GraduationCap,
+      required: true,
+      options: ['SSLC', 'Plus Two', 'Degree']
+    },
+    {
+      name: 'religion',
+      label: 'Religion',
       type: 'text',
       icon: Globe,
-      placeholder: 'Enter your religion and caste',
-      required: true
+      placeholder: 'Religion',
+      required: true,
+      defaultValue: 'Christian'
+    },
+    {
+      name: 'caste',
+      label: 'Caste Category',
+      type: 'select',
+      icon: Users,
+      required: true,
+      options: casteOptions
     },
     {
       name: 'nationality',
@@ -141,14 +230,6 @@ const ApplicationForm = () => {
       type: 'text',
       icon: Globe,
       placeholder: 'Enter your nationality',
-      required: true
-    },
-    {
-      name: 'educationalQualification',
-      label: 'Educational Qualification',
-      type: 'textarea',
-      icon: GraduationCap,
-      placeholder: 'Enter your highest educational qualification with institution name and year',
       required: true
     },
     {
@@ -254,12 +335,68 @@ const ApplicationForm = () => {
               </div>
             </div>
 
+            {/* Certificates Upload Section */}
+            <div className="bg-yellow-50 rounded-lg p-6 mb-6 border-2 border-yellow-200">
+              <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+                <FileText className="w-5 h-5 mr-2 text-yellow-600" />
+                Educational Qualification <span className="text-red-500 ml-1">*</span>
+              </h3>
+              <div className="flex items-center space-x-6">
+                {/* Certificate Icon/Preview */}
+                <div className="flex-shrink-0">
+                  {certificates ? (
+                    <div className="relative">
+                      <div className="w-24 h-24 bg-red-100 rounded-lg flex items-center justify-center border-2 border-red-300">
+                        <FileText className="w-12 h-12 text-red-600" />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={removeCertificates}
+                        className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="w-24 h-24 bg-gray-200 rounded-lg flex items-center justify-center border-2 border-dashed border-gray-300">
+                      <FileText className="w-8 h-8 text-gray-400" />
+                    </div>
+                  )}
+                </div>
+                
+                {/* Upload Button */}
+                <div className="flex-1">
+                  <label className="cursor-pointer">
+                    <div className="flex items-center space-x-2 text-yellow-700 hover:text-yellow-800">
+                      <Upload className="w-5 h-5" />
+                      <span className="font-medium">
+                        {certificates ? 'Change Certificates' : 'Upload Degree & Grade Certificates'}
+                      </span>
+                    </div>
+                    <input
+                      type="file"
+                      accept="application/pdf"
+                      onChange={handleCertificatesChange}
+                      className="hidden"
+                      required
+                    />
+                  </label>
+                  <p className="text-sm text-gray-600 mt-1">
+                    {certificates ? `${certificates.name} (${(certificates.size / 1024).toFixed(0)}KB)` : 'Upload all certificates in a single PDF file. Max 5MB.'}
+                  </p>
+                  <p className="text-xs text-yellow-700 mt-2">
+                    Please combine your degree certificate and grade certificates into one PDF file before uploading.
+                  </p>
+                </div>
+              </div>
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {formFields.map((field) => {
                 const Icon = field.icon;
                 
                 return (
-                  <div key={field.name} className={field.type === 'textarea' ? 'md:col-span-2' : ''}>
+                  <div key={field.name} className={field.type === 'textarea' || field.type === 'multiselect' ? 'md:col-span-2' : ''}>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                       <div className="flex items-center space-x-2">
                         <Icon size={16} className="text-blue-600" />
@@ -268,7 +405,37 @@ const ApplicationForm = () => {
                       </div>
                     </label>
                     
-                    {field.type === 'select' ? (
+                    {field.type === 'multiselect' ? (
+                      <div>
+                        <select
+                          name={field.name}
+                          multiple
+                          value={formData.selectedCourses}
+                          onChange={handleCourseSelection}
+                          required={field.required}
+                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          style={{ minHeight: '120px' }}
+                        >
+                          {field.options?.map((option) => (
+                            <option key={option} value={option}>
+                              {option}
+                            </option>
+                          ))}
+                        </select>
+                        <p className="text-xs text-gray-500 mt-1">
+                          Hold Ctrl (Windows) or Cmd (Mac) to select multiple courses
+                        </p>
+                        {formData.selectedCourses.length > 0 && (
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {formData.selectedCourses.map(course => (
+                              <span key={course} className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded">
+                                {course}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ) : field.type === 'select' ? (
                       <select
                         name={field.name}
                         value={formData[field.name]}
@@ -276,7 +443,7 @@ const ApplicationForm = () => {
                         required={field.required}
                         className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       >
-                        <option value="">Select a course</option>
+                        <option value="">Select {field.label.toLowerCase()}</option>
                         {field.options?.map((option) => (
                           <option key={option} value={option}>
                             {option}
@@ -301,7 +468,8 @@ const ApplicationForm = () => {
                         onChange={handleInputChange}
                         placeholder={field.placeholder}
                         required={field.required}
-                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        readOnly={field.name === 'religion'}
+                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100"
                       />
                     )}
                   </div>

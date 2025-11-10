@@ -24,13 +24,15 @@ export const ApplicationProvider = ({ children }) => {
       courseName: row.course_name,
       dateOfBirth: row.date_of_birth,
       fatherName: row.father_name,
-      religionCaste: row.religion_caste,
+      religion: row.religion,
+      caste: row.caste,
       nationality: row.nationality,
       educationalQualification: row.educational_qualification,
       email: row.email,
       mobileNo: row.mobile_no,
-      superintendentOfServer: row.superintendent_of_server,
+      superintendentOfServer: row.superintendant_of_server || row.superintendent_of_server || null,
       photoPath: row.photo_path,
+      certificatePath: row.certificate_path,
       status: row.status || 'pending',
       submittedAt: row.created_at || new Date().toISOString(),
     };
@@ -57,14 +59,14 @@ export const ApplicationProvider = ({ children }) => {
     }
   };
 
-  const submitApplication = async (applicationData, photo = null) => {
+  const submitApplication = async (applicationData, photo = null, certificates = null) => {
     try {
-      const response = await applicationAPI.submit(applicationData, photo);
+      const response = await applicationAPI.submit(applicationData, photo, certificates);
       
       if (response.success) {
         const newApplication = mapDbRowToApplication(response.application) || {
           ...applicationData,
-          id: `app_${Date.now()}`,
+          id: String(response.applicationId || `app_${Date.now()}`),
           submittedAt: new Date().toISOString(),
           status: 'pending',
         };

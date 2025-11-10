@@ -82,41 +82,44 @@ export const authAPI = {
 
 // Application API calls
 export const applicationAPI = {
-  submit: async (applicationData, photo = null) => {
-    console.log('API submit called with photo:', photo);
-    
-    if (photo) {
-      // Use photo upload endpoint
+  submit: async (applicationData, photo = null, certificates = null) => {
+    try {
+      // Create FormData object for multipart/form-data submission
       const formData = new FormData();
       
       // Add all application data to FormData
       Object.keys(applicationData).forEach(key => {
-        formData.append(key, applicationData[key]);
+        // Handle arrays (like selectedCourses)
+        if (Array.isArray(applicationData[key])) {
+          formData.append(key, JSON.stringify(applicationData[key]));
+        } else {
+          formData.append(key, applicationData[key]);
+        }
       });
       
-      // Add photo
-      formData.append('photo', photo);
-      
-      console.log('Submitting to /applications/with-photo with FormData');
-      console.log('FormData entries:');
-      for (let [key, value] of formData.entries()) {
-        console.log(key, value);
+      // Add files if provided
+      if (photo) {
+        formData.append('photo', photo);
       }
-      console.log('Photo file details:', {
-        name: photo.name,
-        size: photo.size,
-        type: photo.type,
-        lastModified: photo.lastModified
+      if (certificates) {
+        formData.append('certificates', certificates);
+      }
+
+      console.log('Submitting application with files:', {
+        hasPhoto: !!photo,
+        hasCertificates: !!certificates,
+        formData: Object.fromEntries(formData.entries())
       });
-      
-      const response = await api.post('/applications/with-photo', formData);
-      console.log('Response received:', response.data);
+
+      const response = await api.post('/applications', formData);
+      console.log('Response:', response.data);
       return response.data;
-    } else {
-      // Use regular endpoint without photo
-      console.log('Submitting to /applications without photo');
-      const response = await api.post('/applications', applicationData);
-      return response.data;
+    } catch (error) {
+      console.error('Error submitting application:', error);
+      return {
+        success: false,
+        message: error.response?.data?.message || error.message
+      };
     }
   },
   

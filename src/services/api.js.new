@@ -1,0 +1,30 @@
+// In src/services/api.js - Add to applicationAPI object
+export const applicationAPI = {
+  submit: async (formData) => {
+    try {
+      console.log('API submit called');
+      console.log('FormData entries:');
+      for (let [key, value] of formData.entries()) {
+        if (key !== 'photo' && key !== 'certificates') {
+          console.log(key, value);
+        } else {
+          console.log(key, 'File attached');
+        }
+      }
+
+      const response = await api.post('/applications', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+
+      console.log('Response:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('Application submission error:', error);
+      throw error;
+    }
+  },
+
+  // ... other methods
+};

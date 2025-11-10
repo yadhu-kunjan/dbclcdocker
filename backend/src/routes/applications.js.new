@@ -1,0 +1,225 @@
+import { Router } from 'express';
+import multer from 'multer';
+import path from 'path';
+import fs from 'fs';
+import { getDbPool } from '../config/db.js';
+
+const router = Router();
+
+// Ensure uploads directory exists
+const uploadsDir = path.join(process.cwd(), 'uploads');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+  console.log('Created uploads directory:', uploadsDir);
+}
+
+// Configure multer for file uploads
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    console.log('Multer destination called for file:', file.originalname);
+    console.log('Upload path:', uploadsDir);
+    cb(null, uploadsDir);
+  },
+  filename: function (req, file, cb) {
+    // Generate unique filename with original extension
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    const ext = path.extname(file.originalname);
+    let prefix = file.fieldname === 'photo' ? 'student-photo-' : 'student-cert-';
+    const filename = prefix + uniqueSuffix + ext;
+    console.log('Multer filename generated:', filename);
+    cb(null, filename);
+  }
+});
+
+const upload = multer({ 
+  storage: storage,
+  limits: {
+    fileSize: 5 * 1024 * 1024 // 5MB limit
+  },
+  fileFilter: function (req, file, cb) {
+    if (file.fieldname === 'photo') {
+      // Check if file is an image
+      if (file.mimetype.startsWith('image/')) {
+        cb(null, true);
+      } else {
+        cb(new Error('Only image files are allowed for photo!'), false);
+      }
+    } else if (file.fieldname === 'certificates') {
+      // Check if file is a PDF
+      if (file.mimetype === 'application/pdf') {
+        cb(null, true);
+      } else {
+        cb(new Error('Only PDF files are allowed for certificates!'), false);
+      }
+    } else {
+      cb(new Error('Unexpected field'), false);
+    }
+  }
+}).fields([
+  { name: 'photo', maxCount: 1 },
+  { name: 'certificates', maxCount: 1 }
+]);
+
+router.post('/', async (req, res) => {
+  console.log('=== APPLICATION SUBMISSION ===');
+  console.log('Content-Type:', req.headers['content-type']);
+  
+  upload(req, res, async (err) => {
+    if (err) {
+      console.error('File upload error:', err);
+      return res.status(400).json({ 
+        success: false, 
+        message: 'File upload error', 
+        error: err.message 
+      });
+    }
+
+    try {
+      const pool = getDbPool();
+      const formData = req.body;
+
+      // Get file paths if uploaded
+      const photoPath = req.files?.photo?.[0]?.filename;
+      const certificatePath = req.files?.certificates?.[0]?.filename;
+
+      console.log('=== FORM DATA ===');
+      console.log('Photo path:', photoPath);
+      console.log('Certificate path:', certificatePath);
+      console.log('Form data:', formData);
+
+      // Get the selected course name from the first course in selectedCourses array
+      const courseName = Array.isArray(formData.selectedCourses) 
+        ? formData.selectedCourses[0]
+        : formData.selectedCourses;
+
+      const [result] = await pool.execute(
+        `INSERT INTO temp_student (
+          candidate_name,
+          full_address,
+          course_name,
+          date_of_birth,
+          father_name,
+          religion,
+          caste,
+          nationality,
+          educational_qualification,
+          email,
+          mobile_no,
+          superintendant_of_server,
+          photo_path,
+          certificate_path,
+          status,
+          payment_status,
+          created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+        [
+          formData.candidateName,
+          formData.fullAddress,
+          courseName,
+          formData.dateOfBirth,
+          formData.fatherName,
+          formData.religion,
+          formData.caste,
+          formData.nationality,
+          formData.education,
+          formData.email,
+          formData.mobileNo,
+          formData.superintendentOfServer,
+          photoPath,
+          certificatePath,
+          'pending',
+          'unpaid'
+        ]
+      );
+
+      const id = result.insertId;
+      console.log('✅ Application inserted with ID:', id);
+
+      // Fetch the inserted record
+      const [rows] = await pool.execute('SELECT * FROM temp_student WHERE id = ?', [id]);
+      
+      return res.status(201).json({ 
+        success: true, 
+        message: 'Application submitted successfully',
+        application: rows[0]
+      });
+
+    } catch (err) {
+      console.error('Database error:', err);
+      
+      // Clean up uploaded files if database insertion failed
+      if (req.files) {
+        Object.values(req.files).flat().forEach(file => {
+          try {
+            fs.unlinkSync(file.path);
+            console.log('Cleaned up file:', file.path);
+          } catch (deleteErr) {
+            console.error('Error deleting file:', deleteErr);
+          }
+        });
+      }
+
+      return res.status(500).json({ 
+        success: false, 
+        message: 'Failed to submit application', 
+        error: err.message 
+      });
+    }
+  });
+});
+
+// Get all applications
+router.get('/', async (_req, res) => {
+  try {
+    const pool = getDbPool();
+    const [rows] = await pool.execute('SELECT * FROM temp_student ORDER BY created_at DESC');
+    return res.json({ success: true, applications: rows });
+  } catch (err) {
+    return res.status(500).json({ 
+      success: false, 
+      message: 'Failed to fetch applications', 
+      error: err.message 
+    });
+  }
+});
+
+// Update application status
+router.patch('/:id', async (req, res) => {
+  const { id } = req.params;
+  const { status } = req.body;
+  
+  if (!status) {
+    return res.status(400).json({ success: false, message: 'Status is required' });
+  }
+
+  try {
+    const pool = getDbPool();
+    await pool.execute(
+      'UPDATE temp_student SET status = ? WHERE id = ?', 
+      [status, id]
+    );
+    
+    const [rows] = await pool.execute('SELECT * FROM temp_student WHERE id = ?', [id]);
+    return res.json({ success: true, application: rows[0] });
+  } catch (err) {
+    return res.status(500).json({ 
+      success: false, 
+      message: 'Failed to update application', 
+      error: err.message 
+    });
+  }
+});
+
+// Serve uploaded files
+router.get('/uploads/:filename', (req, res) => {
+  const { filename } = req.params;
+  const filePath = path.join(uploadsDir, filename);
+  
+  if (fs.existsSync(filePath)) {
+    res.sendFile(filePath);
+  } else {
+    res.status(404).json({ success: false, message: 'File not found' });
+  }
+});
+
+export default router;
