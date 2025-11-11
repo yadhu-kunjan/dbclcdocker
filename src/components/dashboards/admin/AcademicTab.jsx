@@ -1,9 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { BookOpen, Plus, Edit2, Trash2, Calendar, Users, Clock, DollarSign, Award, X } from 'lucide-react';
-import { courses } from '../../../data/courses';
+import AttendanceManagement from './AttendanceManagement';
+import { courses as localCourses } from '../../../data/courses';
+import { adminAPI } from '../../../services/api';
 
 export default function AcademicTab() {
-  const [courseList, setCourseList] = useState(courses);
+  const [courseList, setCourseList] = useState([]);
   const [showCourseModal, setShowCourseModal] = useState(false);
   const [editingCourse, setEditingCourse] = useState(null);
   const [courseForm, setCourseForm] = useState({
@@ -33,7 +35,14 @@ export default function AcademicTab() {
 
   const handleDeleteCourse = (courseId) => {
     if (window.confirm('Are you sure you want to delete this course?')) {
+      // optimistic UI update + server call
       setCourseList(courseList.filter(course => course.id !== courseId));
+      adminAPI.deleteCourse(courseId).catch(err => {
+        console.error('Failed to delete course', err);
+        // revert on failure
+        // re-fetch courses to be safe
+        fetchCourses();
+      });
     }
   };
 
@@ -50,17 +59,54 @@ export default function AcademicTab() {
 
   const handleSubmitCourse = (e) => {
     e.preventDefault();
+    const payload = {
+      title: courseForm.title,
+      duration: courseForm.duration,
+      description: courseForm.description,
+      subjects: courseForm.subjects,
+      fee: courseForm.fee,
+      intake: courseForm.intake,
+      level: courseForm.level,
+      credits: parseInt(courseForm.credits || '0', 10),
+      color: courseForm.color
+    };
+
     if (editingCourse) {
-      setCourseList(courseList.map(course => 
-        course.id === editingCourse.id ? { ...editingCourse, ...courseForm, credits: parseInt(courseForm.credits) } : course
-      ));
+      adminAPI.updateCourse(editingCourse.id, payload).then((updated) => {
+        setCourseList(courseList.map(c => c.id === updated.id ? updated : c));
+        setShowCourseModal(false);
+        resetForm();
+      }).catch(err => {
+        console.error('Failed to update course', err);
+        alert('Failed to update course');
+      });
     } else {
-      const newCourse = { id: Math.max(...courseList.map(c => c.id)) + 1, ...courseForm, credits: parseInt(courseForm.credits) };
-      setCourseList([...courseList, newCourse]);
+      adminAPI.createCourse(payload).then((created) => {
+        // API returns the created course with parsed subjects
+        setCourseList(prev => [created, ...prev]);
+        setShowCourseModal(false);
+        resetForm();
+      }).catch(err => {
+        console.error('Failed to create course', err);
+        alert('Failed to create course');
+      });
     }
-    setShowCourseModal(false);
-    resetForm();
   };
+
+  // Fetch courses from backend (admin API). Falls back to local static data if request fails.
+  const fetchCourses = async () => {
+    try {
+      const data = await adminAPI.getCourses();
+      setCourseList(data || []);
+    } catch (err) {
+      console.warn('Failed to load courses from API, falling back to local data', err);
+      setCourseList(localCourses);
+    }
+  };
+
+  useEffect(() => {
+    fetchCourses();
+  }, []);
 
   const getColorClasses = (color) => {
     const colorMap = {
@@ -141,11 +187,7 @@ export default function AcademicTab() {
           <h2 className="text-2xl font-bold text-white flex items-center"><Users className="h-7 w-7 mr-3" />Attendance Management</h2>
         </div>
         <div className="p-6">
-          <div className="text-center py-12 bg-gradient-to-br from-purple-50 to-pink-50 rounded-xl border-2 border-dashed border-purple-200">
-            <Calendar className="h-16 w-16 text-purple-400 mx-auto mb-4" />
-            <p className="text-gray-600 text-lg font-medium mb-2">Attendance Feature Coming Soon</p>
-            <p className="text-gray-500 text-sm max-w-md mx-auto">This section will allow you to track and manage student attendance across all courses. Stay tuned for updates!</p>
-          </div>
+          <AttendanceManagement />
         </div>
       </div>
 

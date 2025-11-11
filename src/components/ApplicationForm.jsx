@@ -33,15 +33,16 @@ const ApplicationForm = () => {
   const [formData, setFormData] = useState({
     candidateName: '',
     fullAddress: '',
-    courseName: '',
+    selectedCourses: [],
     dateOfBirth: '',
     fatherName: '',
     religion: 'Christian',
     caste: '',
     nationality: '',
+    education: '',  // Changed from educationalQualification
     email: '',
     mobileNo: '',
-    superintendentOfServer: ''
+    superintendantOfServer: ''  // Fixed spelling to match DB
   });
   
   const [photo, setPhoto] = useState(null);
@@ -66,7 +67,7 @@ const ApplicationForm = () => {
     }
     setFormData(prev => ({
       ...prev,
-      courseName: selected[0] || ''
+      selectedCourses: selected
     }));
   };
 
@@ -122,60 +123,29 @@ const ApplicationForm = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    if (!formData.courseName) {
-      alert('Please select a course');
-      return;
-    }
+    console.log('=== FORM SUBMISSION DEBUG ===');
+    console.log('Form data before submission:', formData);
     
-    if (!certificates) {
-      alert('Please upload your degree and grade certificates');
+    if (formData.selectedCourses.length === 0) {
+      alert('Please select at least one course');
       return;
     }
     
     setIsSubmitting(true);
 
     try {
-      // Create FormData for multipart/form-data submission
-      const formDataToSend = new FormData();
+      const success = await submitApplication(formData, photo, certificates);
+      console.log('Submission result:', success);
       
-      // Append all text fields
-      formDataToSend.append('candidateName', formData.candidateName);
-      formDataToSend.append('fullAddress', formData.fullAddress);
-  // single-course selection
-  formDataToSend.append('courseName', formData.courseName);
-      formDataToSend.append('dateOfBirth', formData.dateOfBirth);
-      formDataToSend.append('fatherName', formData.fatherName);
-      formDataToSend.append('religion', formData.religion);
-      formDataToSend.append('caste', formData.caste);
-      formDataToSend.append('nationality', formData.nationality);
-      formDataToSend.append('email', formData.email);
-      formDataToSend.append('mobileNo', formData.mobileNo);
-      formDataToSend.append('superintendentOfServer', formData.superintendentOfServer);
-      
-      // Append files
-      if (photo) {
-        formDataToSend.append('photo', photo);
-      }
-      if (certificates) {
-        formDataToSend.append('certificates', certificates);
-      }
-      
-      // Submit to API
-      const response = await api.post('/applications', formDataToSend, {
-        headers: {
-          'Content-Type': 'multipart/form-data'
-        }
-      });
-      
-      if (response.data.success) {
-        alert('Application submitted successfully! You will receive a confirmation email shortly.');
+      if (success) {
+        alert('Application submitted successfully!');
         navigate('/');
       } else {
-        alert('Failed to submit application. Please try again.');
+        alert('Failed to submit application. Check console for errors.');
       }
     } catch (error) {
       console.error('Application submission error:', error);
-      alert('Failed to submit application. Please try again.');
+      alert('Failed to submit application. Check console for errors.');
     }
     
     setIsSubmitting(false);
@@ -206,9 +176,9 @@ const ApplicationForm = () => {
       required: true
     },
     {
-      name: 'courseName',
-      label: 'Select Course',
-      type: 'select',
+      name: 'selectedCourses',
+      label: 'Select Courses',
+      type: 'multiselect',
       icon: BookOpen,
       required: true,
       options: courses.map(course => course.title)
@@ -227,6 +197,14 @@ const ApplicationForm = () => {
       icon: Users,
       placeholder: "Enter your father's full name",
       required: true
+    },
+    {
+      name: 'educationalQualification',
+      label: 'Educational Qualification',
+      type: 'select',
+      icon: GraduationCap,
+      required: true,
+      options: ['SSLC', 'Plus Two', 'Degree']
     },
     {
       name: 'religion',

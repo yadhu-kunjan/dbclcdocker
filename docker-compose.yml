@@ -34,7 +34,8 @@ services:
       DB_PASSWORD: ${DB_PASSWORD:-apppassword}
       DB_NAME: ${DB_NAME:-theology}
       # JWT and email (override in a .env file for real secrets)
-      JWT_SECRET: ${JWT_SECRET:-dev_jwt_secret_change_me}
+      JWT_SECRET: ${JWT_SECRET:-3c29d83114762bdd0e965bcf502796e23f4c5ba4bf44535dcf0e1f0ee98e8a15a87a403620615dd3448466bbe9fe223a7a1854864b9da8f9714d43216e5752df}
+      RESEND_API_KEY: ${RESEND_API_KEY:-re_fE9WxWft_GpqBPnXhcpWv8BJqfe1YZ1Zv}
       SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
       SMTP_PORT: ${SMTP_PORT:-587}
       SMTP_USER: ${SMTP_USER:-example@gmail.com}
@@ -43,6 +44,7 @@ services:
       SUPPORT_EMAIL: ${SUPPORT_EMAIL:-support@example.com}
       SUPPORT_PHONE: ${SUPPORT_PHONE:-+00-0000000000}
       PAYMENT_PORTAL_URL: ${PAYMENT_PORTAL_URL:-https://payments.example.com}
+      FROM_EMAIL: ${FROM_EMAIL:-onboarding@resend.dev}
     ports:
       - "3001:3001"
     volumes:
@@ -56,7 +58,7 @@ services:
       context: .
       dockerfile: Dockerfile.frontend
       args:
-        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api}
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:3001/api}
     container_name: project_frontend
     ports:
       - "8080:80"

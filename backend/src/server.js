@@ -9,13 +9,14 @@ import studentRoutes from './routes/student.js';
 import facultyRoutes from './routes/faculty.js';
 import adminRoutes from './routes/admin.js';
 import academicRoutes from './routes/academic.js';
+import attendanceRoutes from './routes/attendance.js';
 import { verifyDbConnection } from './config/db.js';
 import { sendApprovalEmail, sendPaymentReminderEmail } from './services/emailService.js';
 import { runMigrations } from './config/migrations.js';
 import { seedDemoUsers } from './config/seedDemoUsers.js';
 
-// Load environment variables
-dotenv.config({ path: './authconfig.env' });
+// Load environment variables from .env or docker-compose
+dotenv.config();
 
 const app = express();
 const port = 3001; // A port for your backend server
@@ -27,7 +28,15 @@ const asyncHandler = (fn) => (req, res, next) => {
 
 // Middleware
 app.use(cors({
-  origin: ['http://localhost:8080', 'http://localhost:80', 'http://localhost:5173', 'http://127.0.0.1:5173'],
+  origin: [
+    'http://localhost:8080',
+    'http://localhost:80',
+    'http://localhost:5173',
+    'http://127.0.0.1:5173',
+    'http://localhost:3001',
+    'http://project_frontend:80',
+    'http://project_frontend:8080'
+  ],
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'Cache-Control', 'Pragma', 'Expires'],
   credentials: true
@@ -62,6 +71,7 @@ app.use('/api/student', studentRoutes);
 app.use('/api/faculty', facultyRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/academic', academicRoutes);
+app.use('/api/attendance', attendanceRoutes);
 
 // Simple test endpoint
 app.get('/api/users', async (req, res) => {

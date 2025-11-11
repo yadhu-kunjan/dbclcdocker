@@ -52,8 +52,15 @@ api.interceptors.response.use(
 // Auth API calls
 export const authAPI = {
   login: async (credentials) => {
-    const response = await api.post('/auth/login', credentials);
-    return response.data;
+    try {
+      const response = await api.post('/auth/login', credentials);
+      return response.data;
+    } catch (err) {
+      // Normalize error shape so callers can inspect message/property safely
+      const serverMsg = err.response?.data?.message || err.response?.data?.error || err.response?.data || err.message;
+      console.error('Auth login error:', serverMsg);
+      return { success: false, message: serverMsg };
+    }
   },
   
   logout: async () => {
@@ -76,41 +83,44 @@ export const authAPI = {
 // Application API calls
 export const applicationAPI = {
   submit: async (applicationData, photo = null, certificates = null) => {
-    console.log('API submit called with photo and certificates:', !!photo, !!certificates);
-
-    const hasFiles = !!photo || !!certificates;
-    if (hasFiles) {
+    try {
+      // Create FormData object for multipart/form-data submission
       const formData = new FormData();
-
+      
       // Add all application data to FormData
       Object.keys(applicationData).forEach(key => {
-        // If the value is an array (selectedCourses), append each or stringify
-        const val = applicationData[key];
-        if (Array.isArray(val)) {
-          // append as JSON string so backend can parse or join
-          formData.append(key, JSON.stringify(val));
+        // Handle arrays (like selectedCourses)
+        if (Array.isArray(applicationData[key])) {
+          formData.append(key, JSON.stringify(applicationData[key]));
         } else {
-          formData.append(key, val);
+          formData.append(key, applicationData[key]);
         }
       });
-
-      // Add files if present
-      if (photo) formData.append('photo', photo);
-      if (certificates) formData.append('certificates', certificates);
-
-      console.log('Submitting to /applications with FormData');
-      for (let [key, value] of formData.entries()) {
-        console.log(key, value instanceof File ? value.name : value);
+      
+      // Add files if provided
+      if (photo) {
+        formData.append('photo', photo);
+      }
+      if (certificates) {
+        formData.append('certificates', certificates);
       }
 
-      const response = await api.post('/applications', formData);
-      return response.data;
-    }
+      console.log('Submitting application with files:', {
+        hasPhoto: !!photo,
+        hasCertificates: !!certificates,
+        formData: Object.fromEntries(formData.entries())
+      });
 
-    // No files: send JSON
-    console.log('Submitting to /applications without files');
-    const response = await api.post('/applications', applicationData);
-    return response.data;
+      const response = await api.post('/applications', formData);
+      console.log('Response:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('Error submitting application:', error);
+      return {
+        success: false,
+        message: error.response?.data?.message || error.message
+      };
+    }
   },
   
   getAll: async () => {

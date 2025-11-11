@@ -21,19 +21,18 @@ export const ApplicationProvider = ({ children }) => {
       id: String(row.id ?? row.id),
       candidateName: row.candidate_name,
       fullAddress: row.full_address,
-      // backend may use course_name or courseName; keep both keys available
-      courseName: row.course_name || row.courseName,
+      courseName: row.course_name,
       dateOfBirth: row.date_of_birth,
       fatherName: row.father_name,
-      religion: row.religion || row.religion_caste,
-      caste: row.caste || null,
+      religion: row.religion,
+      caste: row.caste,
       nationality: row.nationality,
-      educationalQualification: row.educational_qualification || row.educationalQualification,
+      educationalQualification: row.educational_qualification,
       email: row.email,
-      mobileNo: row.mobile_no || row.whatsapp_no,
-      superintendentOfServer: row.superintendent_of_server,
+      mobileNo: row.mobile_no,
+      superintendentOfServer: row.superintendant_of_server || row.superintendent_of_server || null,
       photoPath: row.photo_path,
-      certificatesPath: row.certificates_path || null,
+      certificatePath: row.certificate_path,
       status: row.status || 'pending',
       submittedAt: row.created_at || new Date().toISOString(),
     };
@@ -67,7 +66,7 @@ export const ApplicationProvider = ({ children }) => {
       if (response.success) {
         const newApplication = mapDbRowToApplication(response.application) || {
           ...applicationData,
-          id: `app_${Date.now()}`,
+          id: String(response.applicationId || `app_${Date.now()}`),
           submittedAt: new Date().toISOString(),
           status: 'pending',
         };
