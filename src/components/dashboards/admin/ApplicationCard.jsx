@@ -21,9 +21,17 @@ export default function ApplicationCard({
             <h3 className="font-bold text-xl text-gray-900">
               {application.candidateName || 'N/A'}
             </h3>
-            <p className="text-sm text-gray-600">
-              {application.courseName} - {application.courseFee}
-            </p>
+            <div className="space-y-1">
+              <p className="text-sm text-gray-600">
+                Selected Courses: {application.course_name}
+              </p>
+              <p className="text-sm text-gray-600">
+                Religion: {application.religion} | Caste: {application.caste}
+              </p>
+              <p className="text-sm text-gray-600">
+                {application.email} | {application.mobile_no}
+              </p>
+            </div>
           </div>
         </div>
         

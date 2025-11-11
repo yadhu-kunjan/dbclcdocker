@@ -21,16 +21,19 @@ export const ApplicationProvider = ({ children }) => {
       id: String(row.id ?? row.id),
       candidateName: row.candidate_name,
       fullAddress: row.full_address,
-      courseName: row.course_name,
+      // backend may use course_name or courseName; keep both keys available
+      courseName: row.course_name || row.courseName,
       dateOfBirth: row.date_of_birth,
       fatherName: row.father_name,
-      religionCaste: row.religion_caste,
+      religion: row.religion || row.religion_caste,
+      caste: row.caste || null,
       nationality: row.nationality,
-      educationalQualification: row.educational_qualification,
+      educationalQualification: row.educational_qualification || row.educationalQualification,
       email: row.email,
-      mobileNo: row.mobile_no,
+      mobileNo: row.mobile_no || row.whatsapp_no,
       superintendentOfServer: row.superintendent_of_server,
       photoPath: row.photo_path,
+      certificatesPath: row.certificates_path || null,
       status: row.status || 'pending',
       submittedAt: row.created_at || new Date().toISOString(),
     };
@@ -57,9 +60,9 @@ export const ApplicationProvider = ({ children }) => {
     }
   };
 
-  const submitApplication = async (applicationData, photo = null) => {
+  const submitApplication = async (applicationData, photo = null, certificates = null) => {
     try {
-      const response = await applicationAPI.submit(applicationData, photo);
+      const response = await applicationAPI.submit(applicationData, photo, certificates);
       
       if (response.success) {
         const newApplication = mapDbRowToApplication(response.application) || {

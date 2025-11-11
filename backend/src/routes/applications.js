@@ -21,34 +21,56 @@ const storage = multer.diskStorage({
     cb(null, uploadsDir) // Use absolute path
   },
   filename: function (req, file, cb) {
-    // Generate unique filename
+    // Generate unique filename based on file type
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    const filename = 'student-photo-' + uniqueSuffix + path.extname(file.originalname);
+    const prefix = file.fieldname === 'photo' ? 'student-photo-' : 'student-certificates-';
+    const filename = prefix + uniqueSuffix + path.extname(file.originalname);
     console.log('Multer filename generated:', filename);
     cb(null, filename);
   }
 });
 
-const upload = multer({ 
+// Configure multer with file type checking
+const upload = multer({
   storage: storage,
   limits: {
-    fileSize: 500 * 1024 // 500KB limit
+    fileSize: 5 * 1024 * 1024 // 5MB limit for certificates
   },
   fileFilter: function (req, file, cb) {
-    // Check if file is an image
-    if (file.mimetype.startsWith('image/')) {
+    if (file.fieldname === 'photo') {
+      // Photo file size and type validation
+      if (file.size > 500 * 1024) {
+        cb(new Error('Photo must be less than 500KB!'), false);
+        return;
+      }
+      if (!file.mimetype.startsWith('image/')) {
+        cb(new Error('Only image files are allowed for photos!'), false);
+        return;
+      }
+      cb(null, true);
+    } else if (file.fieldname === 'certificates') {
+      // Certificate file validation
+      if (file.mimetype !== 'application/pdf') {
+        cb(new Error('Only PDF files are allowed for certificates!'), false);
+        return;
+      }
       cb(null, true);
     } else {
-      cb(new Error('Only image files are allowed!'), false);
+      cb(new Error('Unexpected field'), false);
     }
   }
 });
 
-// Route for applications without photo upload
-router.post('/', async (req, res) => {
+// Main application route with file uploads
+router.post('/', upload.fields([
+  { name: 'photo', maxCount: 1 },
+  { name: 'certificates', maxCount: 1 }
+]), async (req, res) => {
   const a = req.body || {};
   try {
     console.log('POST /applications called');
+    console.log('Files received:', req.files);
+    console.log('Request body full:', a);
     console.log('Request body snippet:', {
       candidateName: a.candidateName,
       email: a.email,
@@ -66,6 +88,34 @@ router.post('/', async (req, res) => {
       console.log('photo_path column already exists or error adding it:', alterError.message);
     }
     
+    // Handle course selection: support selectedCourses (array or JSON string) or single courseName
+    let courseNames = null;
+    try {
+      if (Array.isArray(a.selectedCourses)) {
+        courseNames = a.selectedCourses.join(', ');
+      } else if (typeof a.selectedCourses === 'string') {
+        // frontend may send JSON-stringified array
+        try {
+          const parsed = JSON.parse(a.selectedCourses);
+          if (Array.isArray(parsed)) {
+            courseNames = parsed.join(', ');
+          } else {
+            courseNames = a.selectedCourses;
+          }
+        } catch (e) {
+          // not JSON, use as-is
+          courseNames = a.selectedCourses;
+        }
+      } else if (a.courseName) {
+        courseNames = a.courseName;
+      } else if (a.course_name) {
+        courseNames = a.course_name;
+      }
+    } catch (err) {
+      console.log('Error parsing course names:', err.message);
+      courseNames = a.courseName || a.selectedCourses || null;
+    }
+    
     const [result] = await pool.execute(
       `INSERT INTO temp_student (
         candidate_name,
@@ -73,33 +123,33 @@ router.post('/', async (req, res) => {
         course_name,
         date_of_birth,
         father_name,
-        religion_caste,
+        religion,
+        caste,
         nationality,
-        educational_qualification,
         email,
         mobile_no,
         superintendent_of_server,
         photo_path,
-        course_fee,
+        certificates_path,
         status,
         payment_status
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)` ,
       [
         a.candidateName,
         a.fullAddress,
-        a.courseName,
+        courseNames,
         a.dateOfBirth,
         a.fatherName,
-        a.religionCaste,
+        a.religion,
+        a.caste,
         a.nationality,
-        a.educationalQualification,
         a.email,
         a.mobileNo,
         a.superintendentOfServer,
-        null, // No photo for this route
-        a.courseFee || '₹50,000', // Default course fee
+        req.files?.photo?.[0]?.path || null,
+        req.files?.certificates?.[0]?.path || null,
         'pending', // Default status
-        'unpaid' // Default payment status
+        'unpaid'  // Default payment status
       ]
     );
     const id = result.insertId;

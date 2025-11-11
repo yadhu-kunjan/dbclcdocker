@@ -75,42 +75,42 @@ export const authAPI = {
 
 // Application API calls
 export const applicationAPI = {
-  submit: async (applicationData, photo = null) => {
-    console.log('API submit called with photo:', photo);
-    
-    if (photo) {
-      // Use photo upload endpoint
+  submit: async (applicationData, photo = null, certificates = null) => {
+    console.log('API submit called with photo and certificates:', !!photo, !!certificates);
+
+    const hasFiles = !!photo || !!certificates;
+    if (hasFiles) {
       const formData = new FormData();
-      
+
       // Add all application data to FormData
       Object.keys(applicationData).forEach(key => {
-        formData.append(key, applicationData[key]);
+        // If the value is an array (selectedCourses), append each or stringify
+        const val = applicationData[key];
+        if (Array.isArray(val)) {
+          // append as JSON string so backend can parse or join
+          formData.append(key, JSON.stringify(val));
+        } else {
+          formData.append(key, val);
+        }
       });
-      
-      // Add photo
-      formData.append('photo', photo);
-      
-      console.log('Submitting to /applications/with-photo with FormData');
-      console.log('FormData entries:');
+
+      // Add files if present
+      if (photo) formData.append('photo', photo);
+      if (certificates) formData.append('certificates', certificates);
+
+      console.log('Submitting to /applications with FormData');
       for (let [key, value] of formData.entries()) {
-        console.log(key, value);
+        console.log(key, value instanceof File ? value.name : value);
       }
-      console.log('Photo file details:', {
-        name: photo.name,
-        size: photo.size,
-        type: photo.type,
-        lastModified: photo.lastModified
-      });
-      
-      const response = await api.post('/applications/with-photo', formData);
-      console.log('Response received:', response.data);
-      return response.data;
-    } else {
-      // Use regular endpoint without photo
-      console.log('Submitting to /applications without photo');
-      const response = await api.post('/applications', applicationData);
+
+      const response = await api.post('/applications', formData);
       return response.data;
     }
+
+    // No files: send JSON
+    console.log('Submitting to /applications without files');
+    const response = await api.post('/applications', applicationData);
+    return response.data;
   },
   
   getAll: async () => {
