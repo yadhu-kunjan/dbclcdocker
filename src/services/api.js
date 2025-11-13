@@ -82,34 +82,37 @@ export const authAPI = {
 
 // Application API calls
 export const applicationAPI = {
-  submit: async (applicationData, photo = null, certificates = null) => {
+  submit: async (formDataOrObject, photo = null, certificates = null) => {
     try {
-      // Create FormData object for multipart/form-data submission
-      const formData = new FormData();
-      
-      // Add all application data to FormData
-      Object.keys(applicationData).forEach(key => {
-        // Handle arrays (like selectedCourses)
-        if (Array.isArray(applicationData[key])) {
-          formData.append(key, JSON.stringify(applicationData[key]));
-        } else {
-          formData.append(key, applicationData[key]);
+      let formData;
+
+      // Check if formDataOrObject is already a FormData instance
+      if (formDataOrObject instanceof FormData) {
+        formData = formDataOrObject;
+      } else {
+        // Create FormData object for multipart/form-data submission
+        formData = new FormData();
+
+        // Add all application data to FormData
+        Object.keys(formDataOrObject).forEach(key => {
+          // Handle arrays (like selectedCourses)
+          if (Array.isArray(formDataOrObject[key])) {
+            formData.append(key, JSON.stringify(formDataOrObject[key]));
+          } else {
+            formData.append(key, formDataOrObject[key]);
+          }
+        });
+
+        // Add files if provided
+        if (photo) {
+          formData.append('photo', photo);
         }
-      });
-      
-      // Add files if provided
-      if (photo) {
-        formData.append('photo', photo);
-      }
-      if (certificates) {
-        formData.append('certificates', certificates);
+        if (certificates) {
+          formData.append('certificates', certificates);
+        }
       }
 
-      console.log('Submitting application with files:', {
-        hasPhoto: !!photo,
-        hasCertificates: !!certificates,
-        formData: Object.fromEntries(formData.entries())
-      });
+      console.log('Submitting application...');
 
       const response = await api.post('/applications', formData);
       console.log('Response:', response.data);

@@ -48,21 +48,13 @@ router.post('/', upload.fields([
   { name: 'certificates', maxCount: 1 }
 ]), async (req, res) => {
   try {
-    console.log('=== POST /applications DEBUG ===');
+    console.log('POST /applications called (multipart aware)');
     console.log('Request body:', req.body);
-    console.log('Request files:', req.files);
-    console.log('Form data keys:', Object.keys(req.body));
-    
+
     const pool = getDbPool();
+
+    // Extract form fields from req.body. Some fields (like selectedCourses) may be JSON strings.
     const form = req.body || {};
-    
-    // Debug form data
-    console.log('Parsed form data:', {
-      candidateName: form.candidateName,
-      fullAddress: form.fullAddress,
-      selectedCourses: form.selectedCourses,
-      email: form.email
-    });
 
     // Normalize selectedCourses: could be JSON string or array or single value
     let courseName = null;
@@ -93,107 +85,76 @@ router.post('/', upload.fields([
       return res.status(400).json({ success: false, message: 'Certificates PDF must be <= 5MB' });
     }
 
-    // Map fields to DB columns - fix the field names
+    // Validate required fields
+    if (!form.candidateName || !courseName || !form.dateOfBirth ||
+        !form.fatherName || !form.religion || !form.caste ||
+        !form.nationality || !form.email || !form.mobileNo || !form.superintendentOfServer) {
+      return res.status(400).json({
+        success: false,
+        message: 'Missing required fields. Please fill all mandatory fields.'
+      });
+    }
+
+    // Build full address from individual fields
+    const addressParts = [
+      form.houseName,
+      form.postOffice,
+      form.place,
+      form.district,
+      form.state,
+      form.pin
+    ].filter(Boolean);
+    const fullAddress = addressParts.join(', ') || 'Not provided';
+
+    // Combine religion and caste
+    const religionCaste = `${form.religion || ''} - ${form.caste || ''}`.trim();
+
+    // Map fields to DB columns matching the ACTUAL temp_student schema
     const values = [
-      form.candidateName || null,
-      form.fullAddress || null,
-      courseName || null,
-      form.dateOfBirth || null,
-      form.fatherName || null,
-      form.religion || null,
-      form.caste || null,
-      form.nationality || null,
-      form.education || form.educationalQualification || null, // Try both field names
-      form.email || null,
-      form.mobileNo || null,
-      form.superintendantOfServer || form.superintendentOfServer || null,
-      photoFile ? photoFile.filename : null,
-      certFile ? certFile.filename : null
+      form.candidateName,                      // candidate_name (required)
+      fullAddress,                             // full_address (text, required)
+      courseName,                              // course_name (required)
+      form.dateOfBirth,                        // date_of_birth (required)
+      form.fatherName,                         // father_name (required)
+      religionCaste,                           // religion_caste (required)
+      form.nationality,                        // nationality (required)
+      form.educationalQualification || form.education || '', // educational_qualification (required)
+      form.email,                              // email (required)
+      form.mobileNo,                           // mobile_no (required)
+      form.superintendentOfServer,             // superintendent_of_server (required)
+      photoFile ? photoFile.filename : null,   // photo_path
+      certFile ? certFile.filename : null      // certificate_path
     ];
 
-    console.log('Values to insert:', values);
-
-    // Try inserting using the user's requested column layout first
-    const preferredInsert = `
+    const insertQuery = `
       INSERT INTO temp_student (
         candidate_name,
         full_address,
         course_name,
         date_of_birth,
         father_name,
-        religion,
-        caste,
+        religion_caste,
         nationality,
         educational_qualification,
         email,
         mobile_no,
-        superintendant_of_server,
+        superintendent_of_server,
         photo_path,
         certificate_path
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
-    try {
-      const [result] = await pool.execute(preferredInsert, values);
-      const insertedId = result.insertId;
-      const [rows] = await pool.execute('SELECT * FROM temp_student WHERE id = ?', [insertedId]);
-      return res.status(201).json({ success: true, application: rows[0] });
-    } catch (err) {
-      console.warn('Preferred insert failed, attempting fallback insert:', err.message);
-
-      // Fallback: many DBs in this project use religion_caste and superintendent_of_server
-      // Combine religion and caste into religion_caste
-      const religionCaste = [form.religion, form.caste].filter(Boolean).join(' | ');
-
-      // Ensure certificate_path column exists (attempt add, ignore errors)
-      try {
-        await pool.execute('ALTER TABLE temp_student ADD COLUMN certificate_path VARCHAR(500) NULL');
-        console.log('Added certificate_path column to temp_student');
-      } catch (alterErr) {
-        // ignore if exists
-      }
-
-      const fallbackValues = [
-        form.candidateName || null,
-        form.fullAddress || null,
-        courseName || null,
-        form.dateOfBirth || null,
-        form.fatherName || null,
-        religionCaste || null,
-        form.nationality || null,
-        form.educationalQualification || form.education || null,
-        form.email || null,
-        form.mobileNo || null,
-        form.superintendentOfServer || form.superintendantOfServer || null,
-        photoFile ? photoFile.filename : null,
-        certFile ? certFile.filename : null
-      ];
-
-      const fallbackInsert = `
-        INSERT INTO temp_student (
-          candidate_name,
-          full_address,
-          course_name,
-          date_of_birth,
-          father_name,
-          religion_caste,
-          nationality,
-          educational_qualification,
-          email,
-          mobile_no,
-          superintendent_of_server,
-          photo_path,
-          certificate_path
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
-
-      const [result2] = await pool.execute(fallbackInsert, fallbackValues);
-      const insertedId2 = result2.insertId;
-      const [rows2] = await pool.execute('SELECT * FROM temp_student WHERE id = ?', [insertedId2]);
-      return res.status(201).json({ success: true, application: rows2[0] });
-    }
+    const [result] = await pool.execute(insertQuery, values);
     const insertedId = result.insertId;
 
+    console.log('Application inserted successfully with ID:', insertedId);
+
     const [rows] = await pool.execute('SELECT * FROM temp_student WHERE id = ?', [insertedId]);
-    return res.status(201).json({ success: true, application: rows[0] });
+    return res.status(201).json({
+      success: true,
+      message: 'Application submitted successfully!',
+      application: rows[0]
+    });
+
   } catch (err) {
     console.error('Error in /applications:', err);
     // Cleanup any uploaded files when error occurs
@@ -202,7 +163,11 @@ router.post('/', upload.fields([
         try { fs.unlinkSync(f.path); } catch (e) { /* ignore */ }
       });
     }
-    return res.status(500).json({ success: false, message: 'Failed to submit application', error: err.message });
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to submit application',
+      error: err.message
+    });
   }
 });
 

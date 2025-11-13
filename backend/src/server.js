@@ -115,7 +115,10 @@ app.get('/api/courses', async (req, res) => {
         intake,
         level,
         credits,
-        color
+        color,
+        is_for_pri_and_rel,
+        is_for_ct,
+        is_for_asp_and_post
       FROM courses
       ORDER BY level, title
     `);

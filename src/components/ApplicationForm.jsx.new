@@ -1,38 +1,27 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Send, User, MapPin, BookOpen, Calendar, Users, Globe, GraduationCap, Mail, Phone, Shield, Camera, Upload, X, FileText } from 'lucide-react';
-import { applicationAPI } from '../services/api';
+import { useApplications } from '../contexts/ApplicationContext';
 import api from '../services/api';
 
-const ApplicationFormPreview = () => {
+const ApplicationForm = () => {
+  const navigate = useNavigate();
+  const { submitApplication } = useApplications();
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [allCourses, setAllCourses] = useState([]);
+  const [courses, setCourses] = useState([]);
   const [loadingCourses, setLoadingCourses] = useState(true);
-  const [courseFilters, setCourseFilters] = useState({
-    completedCTC: false,
-    isPriestOrReligious: false,
-    isAspirantOrPostulant: false
-  });
 
-  // Fetch courses from database on component mount
+  // Fetch courses from API
   useEffect(() => {
     const fetchCourses = async () => {
       try {
-        setLoadingCourses(true);
         const response = await api.get('/courses');
-        if (response.data.success && Array.isArray(response.data.courses)) {
-          // Map database courses - extract course titles (course_name from migrations is stored as title)
-          const courseNames = response.data.courses
-            .map(course => course.title || '')
-            .filter(name => name.trim() !== '');
-          console.log('✅ Loaded courses from database:', courseNames);
-          setAllCourses(courseNames);
-        } else {
-          console.warn('No courses found in response');
-          setAllCourses([]);
+        if (response.data.success) {
+          setCourses(response.data.courses);
         }
       } catch (error) {
         console.error('Error fetching courses:', error);
-        setAllCourses([]);
+        setCourses([]);
       } finally {
         setLoadingCourses(false);
       }
@@ -43,22 +32,14 @@ const ApplicationFormPreview = () => {
 
   const [formData, setFormData] = useState({
     candidateName: '',
-    alias: '',
-    houseName: '',
-    postOffice: '',
-    place: '',
-    district: '',
-    state: '',
-    pin: '',
-    sex: '',
+    fullAddress: '',
     selectedCourses: [],
     dateOfBirth: '',
     fatherName: '',
-    motherName: '',
     religion: 'Christian',
     caste: '',
     nationality: '',
-    educationalQualification: '',
+    education: '',  // Added education field
     email: '',
     mobileNo: '',
     superintendentOfServer: ''
@@ -87,19 +68,6 @@ const ApplicationFormPreview = () => {
     setFormData(prev => ({
       ...prev,
       selectedCourses: selected
-    }));
-  };
-
-  const handleFilterChange = (e) => {
-    const { name, checked } = e.target;
-    setCourseFilters(prev => ({
-      ...prev,
-      [name]: checked
-    }));
-    // Clear selected courses when filter changes
-    setFormData(prev => ({
-      ...prev,
-      selectedCourses: []
     }));
   };
 
@@ -154,94 +122,34 @@ const ApplicationFormPreview = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-
+    
     if (formData.selectedCourses.length === 0) {
       alert('Please select at least one course');
       return;
     }
-
-    if (!photo) {
-      alert('Please upload your photo');
-      return;
-    }
-
+    
     if (!certificates) {
       alert('Please upload your degree and grade certificates');
       return;
     }
-
+    
     setIsSubmitting(true);
 
     try {
-      // Create FormData object for multipart/form-data submission
-      const submitData = new FormData();
-
-      // Add all form fields
-      Object.keys(formData).forEach(key => {
-        if (key === 'selectedCourses') {
-          // Send as JSON string
-          submitData.append(key, JSON.stringify(formData[key]));
-        } else if (formData[key]) {
-          submitData.append(key, formData[key]);
-        }
-      });
-
-      // Add files
-      if (photo) {
-        submitData.append('photo', photo);
-      }
-      if (certificates) {
-        submitData.append('certificates', certificates);
-      }
-
-      console.log('Submitting application...');
-
-      // Submit to backend
-      const response = await applicationAPI.submit(submitData);
-
-      if (response.success) {
-        alert('✅ Application Submitted Successfully!\n\nYour application has been received and is pending review.');
-
-        // Reset form
-        setFormData({
-          candidateName: '',
-          alias: '',
-          houseName: '',
-          postOffice: '',
-          place: '',
-          district: '',
-          state: '',
-          pin: '',
-          sex: '',
-          selectedCourses: [],
-          dateOfBirth: '',
-          fatherName: '',
-          motherName: '',
-          religion: 'Christian',
-          caste: '',
-          nationality: '',
-          educationalQualification: '',
-          email: '',
-          mobileNo: '',
-          superintendentOfServer: ''
-        });
-        setPhoto(null);
-        setPhotoPreview(null);
-        setCertificates(null);
-        setCourseFilters({
-          completedCTC: false,
-          isPriestOrReligious: false,
-          isAspirantOrPostulant: false
-        });
+      const success = await submitApplication(formData, photo, certificates);
+      
+      if (success) {
+        alert('Application submitted successfully! You will receive a confirmation email shortly.');
+        navigate('/');
       } else {
-        alert('❌ Submission Failed\n\n' + (response.message || 'Please try again later.'));
+        alert('Failed to submit application. Please try again.');
       }
     } catch (error) {
-      console.error('Error submitting application:', error);
-      alert('❌ Submission Failed\n\n' + (error.response?.data?.message || error.message || 'Please check your connection and try again.'));
-    } finally {
-      setIsSubmitting(false);
+      console.error('Application submission error:', error);
+      alert('Failed to submit application. Please try again.');
     }
+    
+    setIsSubmitting(false);
   };
 
   const casteOptions = [
@@ -250,8 +158,6 @@ const ApplicationFormPreview = () => {
     'Scheduled Caste (SC)',
     'Scheduled Tribe (ST)'
   ];
-
-  const sexOptions = ['Male', 'Female', 'Other'];
 
   const formFields = [
     {
@@ -263,70 +169,12 @@ const ApplicationFormPreview = () => {
       required: true
     },
     {
-      name: 'alias',
-      label: 'Alias',
-      type: 'text',
-      icon: User,
-      placeholder: 'Enter your alias (if any)',
-      required: false
-    },
-    {
-      name: 'houseName',
-      label: 'House Name',
-      type: 'text',
+      name: 'fullAddress',
+      label: 'Full Address',
+      type: 'textarea',
       icon: MapPin,
-      placeholder: 'Enter your house name',
+      placeholder: 'Enter your complete address with city, state, and postal code',
       required: true
-    },
-    {
-      name: 'postOffice',
-      label: 'Post Office',
-      type: 'text',
-      icon: MapPin,
-      placeholder: 'Enter your post office',
-      required: true
-    },
-    {
-      name: 'place',
-      label: 'Place',
-      type: 'text',
-      icon: MapPin,
-      placeholder: 'Enter your place/village',
-      required: true
-    },
-    {
-      name: 'district',
-      label: 'District',
-      type: 'text',
-      icon: MapPin,
-      placeholder: 'Enter your district',
-      required: true
-    },
-    {
-      name: 'state',
-      label: 'State',
-      type: 'text',
-      icon: MapPin,
-      placeholder: 'Enter your state',
-      required: true
-    },
-    {
-      name: 'pin',
-      label: 'PIN Code',
-      type: 'text',
-      icon: MapPin,
-      placeholder: 'Enter your PIN code',
-      required: true,
-      pattern: '[0-9]{6}',
-      maxLength: 6
-    },
-    {
-      name: 'sex',
-      label: 'Sex',
-      type: 'select',
-      icon: User,
-      required: true,
-      options: sexOptions
     },
     {
       name: 'selectedCourses',
@@ -334,7 +182,7 @@ const ApplicationFormPreview = () => {
       type: 'multiselect',
       icon: BookOpen,
       required: true,
-      options: allCourses
+      options: courses.map(course => course.title)
     },
     {
       name: 'dateOfBirth',
@@ -349,14 +197,6 @@ const ApplicationFormPreview = () => {
       type: 'text',
       icon: Users,
       placeholder: "Enter your father's full name",
-      required: true
-    },
-    {
-      name: 'motherName',
-      label: "Mother's Name",
-      type: 'text',
-      icon: Users,
-      placeholder: "Enter your mother's full name",
       required: true
     },
     {
@@ -385,12 +225,12 @@ const ApplicationFormPreview = () => {
       required: true
     },
     {
-      name: 'educationalQualification',
+      name: 'education',
       label: 'Educational Qualification',
-      type: 'text',
+      type: 'select',
       icon: GraduationCap,
-      placeholder: 'Enter your highest educational qualification (e.g., B.A., M.A., etc.)',
-      required: true
+      required: true,
+      options: ['SSLC', 'Plus Two', 'Degree']
     },
     {
       name: 'email',
@@ -423,6 +263,14 @@ const ApplicationFormPreview = () => {
       <div className="max-w-4xl mx-auto px-6">
         {/* Header */}
         <div className="mb-8">
+          <button
+            onClick={() => navigate('/')}
+            className="flex items-center space-x-2 text-blue-600 hover:text-blue-800 mb-4"
+          >
+            <ArrowLeft size={20} />
+            <span>Back to Homepage</span>
+          </button>
+          
           <div className="text-center">
             <h1 className="text-4xl font-bold text-gray-800 mb-4">Application Form</h1>
             <p className="text-xl text-gray-600">DBCLC Institute of Theology</p>
@@ -432,7 +280,7 @@ const ApplicationFormPreview = () => {
 
         {/* Application Form */}
         <div className="bg-white rounded-xl shadow-lg p-8">
-          <div className="space-y-6">
+          <form onSubmit={handleSubmit} className="space-y-6">
             {/* Photo Upload Section */}
             <div className="bg-gray-50 rounded-lg p-6 mb-6">
               <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center">
@@ -491,7 +339,7 @@ const ApplicationFormPreview = () => {
             <div className="bg-yellow-50 rounded-lg p-6 mb-6 border-2 border-yellow-200">
               <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center">
                 <FileText className="w-5 h-5 mr-2 text-yellow-600" />
-                Educational Qualification <span className="text-red-500 ml-1">*</span>
+                Educational Certificates <span className="text-red-500 ml-1">*</span>
               </h3>
               <div className="flex items-center space-x-6">
                 {/* Certificate Icon/Preview */}
@@ -522,7 +370,7 @@ const ApplicationFormPreview = () => {
                     <div className="flex items-center space-x-2 text-yellow-700 hover:text-yellow-800">
                       <Upload className="w-5 h-5" />
                       <span className="font-medium">
-                        {certificates ? 'Change Certificates' : 'Upload Degree & Grade Certificates'}
+                        {certificates ? 'Change Certificates' : 'Upload Certificates'}
                       </span>
                     </div>
                     <input
@@ -537,73 +385,13 @@ const ApplicationFormPreview = () => {
                     {certificates ? `${certificates.name} (${(certificates.size / 1024).toFixed(0)}KB)` : 'Upload all certificates in a single PDF file. Max 5MB.'}
                   </p>
                   <p className="text-xs text-yellow-700 mt-2">
-                    Please combine your degree certificate and grade certificates into one PDF file before uploading.
+                    Please combine your educational certificates into one PDF file before uploading.
                   </p>
                 </div>
               </div>
             </div>
 
-            {/* Course Eligibility Filters */}
-            <div className="bg-blue-50 rounded-lg p-6 mb-6 border-2 border-blue-200">
-              <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center">
-                <BookOpen className="w-5 h-5 mr-2 text-blue-600" />
-                Course Eligibility
-              </h3>
-              <p className="text-sm text-gray-600 mb-4">
-                Please check all that apply to see available courses:
-              </p>
-              <div className="space-y-3">
-                <label className="flex items-center space-x-3">
-                  <input
-                    type="checkbox"
-                    name="completedCTC"
-                    checked={courseFilters.completedCTC}
-                    onChange={handleFilterChange}
-                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                  />
-                  <span className="text-sm font-medium text-gray-700">
-                    Have you completed CTC course?
-                  </span>
-                </label>
-                <label className="flex items-center space-x-3">
-                  <input
-                    type="checkbox"
-                    name="isPriestOrReligious"
-                    checked={courseFilters.isPriestOrReligious}
-                    onChange={handleFilterChange}
-                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                  />
-                  <span className="text-sm font-medium text-gray-700">
-                    Are you a priest or a religious?
-                  </span>
-                </label>
-                <label className="flex items-center space-x-3">
-                  <input
-                    type="checkbox"
-                    name="isAspirantOrPostulant"
-                    checked={courseFilters.isAspirantOrPostulant}
-                    onChange={handleFilterChange}
-                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                  />
-                  <span className="text-sm font-medium text-gray-700">
-                    Are you an Aspirant or a postulant?
-                  </span>
-                </label>
-              </div>
-            </div>
-
-            {/* Course Selection and Other Form Fields */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {loadingCourses && (
-                <div className="md:col-span-2 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                  <p className="text-sm text-blue-700">Loading courses...</p>
-                </div>
-              )}
-              {allCourses.length === 0 && !loadingCourses && (
-                <div className="md:col-span-2 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-                  <p className="text-sm text-yellow-700">⚠ No courses available at the moment.</p>
-                </div>
-              )}
               {formFields.map((field) => {
                 const Icon = field.icon;
                 
@@ -625,8 +413,7 @@ const ApplicationFormPreview = () => {
                           value={formData.selectedCourses}
                           onChange={handleCourseSelection}
                           required={field.required}
-                          disabled={loadingCourses}
-                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100"
+                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                           style={{ minHeight: '120px' }}
                         >
                           {field.options?.map((option) => (
@@ -682,9 +469,7 @@ const ApplicationFormPreview = () => {
                         placeholder={field.placeholder}
                         required={field.required}
                         readOnly={field.name === 'religion'}
-                        pattern={field.pattern}
-                        maxLength={field.maxLength}
-                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 read-only:bg-gray-50"
+                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100"
                       />
                     )}
                   </div>
@@ -714,7 +499,7 @@ const ApplicationFormPreview = () => {
             {/* Submit Button */}
             <div className="flex justify-center pt-6">
               <button
-                onClick={handleSubmit}
+                type="submit"
                 disabled={isSubmitting}
                 className="flex items-center space-x-2 bg-gradient-to-r from-blue-600 to-purple-700 text-white px-8 py-4 rounded-lg font-medium hover:shadow-lg transform hover:-translate-y-1 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
               >
@@ -722,11 +507,11 @@ const ApplicationFormPreview = () => {
                 <span>{isSubmitting ? 'Submitting Application...' : 'Submit Application'}</span>
               </button>
             </div>
-          </div>
+          </form>
         </div>
       </div>
     </div>
   );
 };
 
-export default ApplicationFormPreview;
+export default ApplicationForm;
