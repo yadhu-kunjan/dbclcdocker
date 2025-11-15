@@ -35,12 +35,27 @@ const ProgramsPage = () => {
 
   const levels = ['All', 'Certificate', 'Associate', 'Undergraduate', 'Graduate', 'Doctoral'];
 
+  // Helper function to parse subjects
+  const parseSubjects = (subjects) => {
+    if (typeof subjects === 'string') {
+      try {
+        return JSON.parse(subjects);
+      } catch (e) {
+        return [];
+      }
+    }
+    return Array.isArray(subjects) ? subjects : [];
+  };
+
   const filteredCourses = courses
-    .filter(course => 
-      course.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      course.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      course.subjects.some(subject => subject.toLowerCase().includes(searchTerm.toLowerCase()))
-    )
+    .filter(course => {
+      const courseSubjects = parseSubjects(course.subjects);
+      return (
+        course.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (course.description || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        courseSubjects.some(subject => subject.toLowerCase().includes(searchTerm.toLowerCase()))
+      );
+    })
     .filter(course => selectedLevel === 'All' || course.level === selectedLevel)
     .sort((a, b) => {
       switch (sortBy) {
@@ -124,19 +139,26 @@ const ProgramsPage = () => {
               Key Subjects
             </h4>
             <div className="flex flex-wrap gap-2">
-              {course.subjects.slice(0, 3).map((subject, idx) => (
-                <span 
-                  key={idx} 
-                  className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs font-medium border border-gray-200"
-                >
-                  {subject}
-                </span>
-              ))}
-              {course.subjects.length > 3 && (
-                <span className="px-2 py-1 bg-gray-200 text-gray-600 rounded text-xs font-medium">
-                  +{course.subjects.length - 3} more
-                </span>
-              )}
+              {(() => {
+                const courseSubjects = parseSubjects(course.subjects);
+                return (
+                  <>
+                    {courseSubjects.slice(0, 3).map((subject, idx) => (
+                      <span 
+                        key={idx} 
+                        className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs font-medium border border-gray-200"
+                      >
+                        {subject}
+                      </span>
+                    ))}
+                    {courseSubjects.length > 3 && (
+                      <span className="px-2 py-1 bg-gray-200 text-gray-600 rounded text-xs font-medium">
+                        +{courseSubjects.length - 3} more
+                      </span>
+                    )}
+                  </>
+                );
+              })()}
             </div>
           </div>
 

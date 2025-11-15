@@ -17,6 +17,18 @@ export default function AcademicTab() {
   const colors = ['blue', 'emerald', 'amber', 'indigo', 'rose', 'teal', 'cyan', 'violet', 'orange', 'lime'];
   const levels = ['Undergraduate', 'Graduate', 'Doctoral', 'Certificate', 'Diploma', 'Associate'];
 
+  // Helper function to parse subjects
+  const parseSubjects = (subjects) => {
+    if (typeof subjects === 'string') {
+      try {
+        return JSON.parse(subjects);
+      } catch (e) {
+        return [];
+      }
+    }
+    return Array.isArray(subjects) ? subjects : [];
+  };
+
   const resetForm = () => {
     setCourseForm({ title: '', duration: '', description: '', subjects: [], fee: '', intake: '', level: '', credits: '', color: 'blue' });
     setNewSubject('');
@@ -27,7 +39,7 @@ export default function AcademicTab() {
     setEditingCourse(course);
     setCourseForm({
       title: course.title, duration: course.duration, description: course.description,
-      subjects: [...course.subjects], fee: course.fee, intake: course.intake,
+      subjects: [...parseSubjects(course.subjects)], fee: course.fee, intake: course.intake,
       level: course.level, credits: course.credits.toString(), color: course.color
     });
     setShowCourseModal(true);
@@ -162,10 +174,17 @@ export default function AcademicTab() {
                   <div className="pt-2 border-t border-gray-100">
                     <p className="text-xs font-semibold text-gray-700 mb-2">Key Subjects:</p>
                     <div className="flex flex-wrap gap-1">
-                      {course.subjects.slice(0, 3).map((subject, idx) => (
-                        <span key={idx} className="px-2 py-1 bg-gray-100 text-gray-700 rounded-full text-xs">{subject}</span>
-                      ))}
-                      {course.subjects.length > 3 && (<span className="px-2 py-1 bg-gray-200 text-gray-600 rounded-full text-xs">+{course.subjects.length - 3} more</span>)}
+                      {(() => {
+                        const courseSubjects = parseSubjects(course.subjects);
+                        return (
+                          <>
+                            {courseSubjects.slice(0, 3).map((subject, idx) => (
+                              <span key={idx} className="px-2 py-1 bg-gray-100 text-gray-700 rounded-full text-xs">{subject}</span>
+                            ))}
+                            {courseSubjects.length > 3 && (<span className="px-2 py-1 bg-gray-200 text-gray-600 rounded-full text-xs">+{courseSubjects.length - 3} more</span>)}
+                          </>
+                        );
+                      })()}
                     </div>
                   </div>
                 </div>

@@ -8,6 +8,18 @@ export default function AttendanceManagement() {
   const [selectedSubject, setSelectedSubject] = useState('');
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [students, setStudents] = useState([]);
+
+  // Helper function to parse subjects
+  const parseSubjects = (subjects) => {
+    if (typeof subjects === 'string') {
+      try {
+        return JSON.parse(subjects);
+      } catch (e) {
+        return [];
+      }
+    }
+    return Array.isArray(subjects) ? subjects : [];
+  };
   const [attendance, setAttendance] = useState({});
 
   // Static mock students (previous simple behavior)
@@ -51,7 +63,7 @@ export default function AttendanceManagement() {
 
   const getSubjectsForCourse = (courseId) => {
     const c = courses.find(cc => String(cc.id) === String(courseId));
-    return c ? c.subjects : [];
+    return c ? parseSubjects(c.subjects) : [];
   };
 
   return (
